@@ -50,6 +50,8 @@
 ```
 nofx/
 ├── main.go                          # 程序入口
+├── api/
+│   └── server.go                   # HTTP API服务（Gin框架）
 ├── trader/
 │   ├── auto_trader.go              # 自动交易主控逻辑
 │   └── binance_futures.go          # 币安合约API封装
@@ -63,8 +65,15 @@ nofx/
 │   └── coin_pool.go                # 币种池管理
 ├── logger/
 │   └── decision_logger.go          # 决策日志系统
-└── decision_logs/                  # 决策记录存储目录
-    └── decision_YYYYMMDD_HHMMSS_cycleN.json
+├── decision_logs/                  # 决策记录存储目录
+│   └── decision_YYYYMMDD_HHMMSS_cycleN.json
+└── web/                            # Web前端（Vite + React + TypeScript）
+    ├── src/
+    │   ├── components/             # React组件
+    │   ├── lib/api.ts              # API调用
+    │   ├── types/index.ts          # 类型定义
+    │   └── App.tsx                 # 主应用
+    └── README.md                   # 前端文档
 ```
 
 ### 依赖库
@@ -138,14 +147,32 @@ config := trader.AutoTraderConfig{
 
 ### 5. 运行系统
 
+**后端（交易系统 + API服务器）：**
+
 ```bash
 go build -o nofx-auto
 ./nofx-auto
 ```
 
+系统会自动启动：
+- AI自动交易系统（每3分钟决策一次）
+- HTTP API服务器（端口8080）
+
+**前端（Web Dashboard）：**
+
+在新终端窗口中：
+
+```bash
+cd web
+npm install    # 首次运行需要安装依赖
+npm run dev    # 启动开发服务器
+```
+
+访问：http://localhost:3000
+
 ### 6. 停止系统
 
-按 `Ctrl+C` 优雅停止
+按 `Ctrl+C` 停止后端和前端服务
 
 ---
 

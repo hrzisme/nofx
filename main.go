@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"nofx/api"
+	"nofx/logger"
 	"nofx/trader"
 	"os"
 	"os/signal"
@@ -67,6 +69,17 @@ func main() {
 	fmt.Println("按 Ctrl+C 停止运行")
 	fmt.Println(strings.Repeat("=", 60))
 	fmt.Println()
+
+	// 创建决策日志记录器（用于API）
+	decisionLogger := logger.NewDecisionLogger("decision_logs")
+
+	// 创建并启动API服务器（在goroutine中运行）
+	apiServer := api.NewServer(autoTrader, decisionLogger, 8080)
+	go func() {
+		if err := apiServer.Start(); err != nil {
+			log.Printf("❌ API服务器错误: %v", err)
+		}
+	}()
 
 	// 设置优雅退出
 	sigChan := make(chan os.Signal, 1)

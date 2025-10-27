@@ -657,3 +657,140 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *market.TradingDecisi
 	log.Printf("  ✓ 平仓成功")
 	return nil
 }
+
+// GetStatus 获取系统状态（用于API）
+func (at *AutoTrader) GetStatus() map[string]interface{} {
+	aiProvider := "DeepSeek"
+	if at.config.UseQwen {
+		aiProvider = "Qwen"
+	}
+
+	return map[string]interface{}{
+		"is_running":      at.isRunning,
+		"start_time":      at.startTime.Format(time.RFC3339),
+		"runtime_minutes": int(time.Since(at.startTime).Minutes()),
+		"call_count":      at.callCount,
+		"initial_balance": at.initialBalance,
+		"scan_interval":   at.config.ScanInterval.String(),
+		"stop_until":      at.stopUntil.Format(time.RFC3339),
+		"last_reset_time": at.lastResetTime.Format(time.RFC3339),
+		"ai_provider":     aiProvider,
+	}
+}
+
+// GetAccountInfo 获取账户信息（用于API）
+func (at *AutoTrader) GetAccountInfo() (map[string]interface{}, error) {
+	balance, err := at.trader.GetBalance()
+	if err != nil {
+		return nil, fmt.Errorf("获取余额失败: %w", err)
+	}
+
+	totalEquity := 0.0
+	availableBalance := 0.0
+	if equity, ok := balance["totalWalletBalance"].(float64); ok {
+		totalEquity = equity
+	}
+	if avail, ok := balance["availableBalance"].(float64); ok {
+		availableBalance = avail
+	}
+
+	// 获取持仓计算总保证金
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		return nil, fmt.Errorf("获取持仓失败: %w", err)
+	}
+
+	totalMarginUsed := 0.0
+	totalUnrealizedPnL := 0.0
+	for _, pos := range positions {
+		markPrice := pos["markPrice"].(float64)
+		quantity := pos["positionAmt"].(float64)
+		if quantity < 0 {
+			quantity = -quantity
+		}
+		unrealizedPnl := pos["unRealizedProfit"].(float64)
+		totalUnrealizedPnL += unrealizedPnl
+
+		leverage := 10
+		if lev, ok := pos["leverage"].(float64); ok {
+			leverage = int(lev)
+		}
+		marginUsed := (quantity * markPrice) / float64(leverage)
+		totalMarginUsed += marginUsed
+	}
+
+	totalPnL := totalEquity - at.initialBalance
+	totalPnLPct := 0.0
+	if at.initialBalance > 0 {
+		totalPnLPct = (totalPnL / at.initialBalance) * 100
+	}
+
+	marginUsedPct := 0.0
+	if totalEquity > 0 {
+		marginUsedPct = (totalMarginUsed / totalEquity) * 100
+	}
+
+	return map[string]interface{}{
+		"total_equity":         totalEquity,
+		"available_balance":    availableBalance,
+		"total_pnl":            totalPnL,
+		"total_pnl_pct":        totalPnLPct,
+		"total_unrealized_pnl": totalUnrealizedPnL,
+		"margin_used":          totalMarginUsed,
+		"margin_used_pct":      marginUsedPct,
+		"position_count":       len(positions),
+		"initial_balance":      at.initialBalance,
+		"daily_pnl":            at.dailyPnL,
+	}, nil
+}
+
+// GetPositions 获取持仓列表（用于API）
+func (at *AutoTrader) GetPositions() ([]map[string]interface{}, error) {
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		return nil, fmt.Errorf("获取持仓失败: %w", err)
+	}
+
+	var result []map[string]interface{}
+	for _, pos := range positions {
+		symbol := pos["symbol"].(string)
+		side := pos["side"].(string)
+		entryPrice := pos["entryPrice"].(float64)
+		markPrice := pos["markPrice"].(float64)
+		quantity := pos["positionAmt"].(float64)
+		if quantity < 0 {
+			quantity = -quantity
+		}
+		unrealizedPnl := pos["unRealizedProfit"].(float64)
+		liquidationPrice := pos["liquidationPrice"].(float64)
+
+		leverage := 10
+		if lev, ok := pos["leverage"].(float64); ok {
+			leverage = int(lev)
+		}
+
+		pnlPct := 0.0
+		if side == "long" {
+			pnlPct = ((markPrice - entryPrice) / entryPrice) * 100
+		} else {
+			pnlPct = ((entryPrice - markPrice) / entryPrice) * 100
+		}
+
+		marginUsed := (quantity * markPrice) / float64(leverage)
+
+		result = append(result, map[string]interface{}{
+			"symbol":             symbol,
+			"side":               side,
+			"entry_price":        entryPrice,
+			"mark_price":         markPrice,
+			"quantity":           quantity,
+			"leverage":           leverage,
+			"unrealized_pnl":     unrealizedPnl,
+			"unrealized_pnl_pct": pnlPct,
+			"liquidation_price":  liquidationPrice,
+			"margin_used":        marginUsed,
+		})
+	}
+
+	return result, nil
+}
