@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { api } from './lib/api';
+import { EquityChart } from './components/EquityChart';
 import type { SystemStatus, AccountInfo, Position, DecisionRecord, Statistics } from './types';
 
 function App() {
@@ -30,16 +31,16 @@ function App() {
   }, [status?.is_running]);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen text-gray-100">
       {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800">
+      <header className="glass sticky top-0 z-50 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-white">
-                🤖 NOFX Auto Trading Dashboard
+                🤖 NOFX Auto Trading
               </h1>
-              <p className="text-gray-400 mt-1">
+              <p className="text-gray-400 mt-1 mono text-sm">
                 AI-Driven Binance Futures Trading System
               </p>
             </div>
@@ -48,27 +49,31 @@ function App() {
                 <div
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
                     status.is_running
-                      ? 'bg-green-900/30 text-green-400'
-                      : 'bg-red-900/30 text-red-400'
+                      ? 'bg-green-900/30 text-green-400 border border-green-900/50'
+                      : 'bg-red-900/30 text-red-400 border border-red-900/50'
                   }`}
                 >
                   <div
                     className={`w-2 h-2 rounded-full ${
-                      status.is_running ? 'bg-green-400' : 'bg-red-400'
-                    } animate-pulse`}
+                      status.is_running ? 'bg-green-400 pulse-glow' : 'bg-red-400'
+                    }`}
                   />
-                  <span className="font-semibold">
-                    {status.is_running ? 'Running' : 'Stopped'}
+                  <span className="font-semibold mono text-sm">
+                    {status.is_running ? 'RUNNING' : 'STOPPED'}
                   </span>
                 </div>
               )}
               <div className="text-right">
-                <div className="text-sm text-gray-400">AI Provider</div>
-                <div className="font-semibold">{status?.ai_provider || '-'}</div>
+                <div className="text-xs text-gray-400 mono">AI Provider</div>
+                <div className="font-semibold mono" style={{
+                  color: status?.ai_provider === 'DeepSeek' ? '#4d6bfe' : '#8b5cf6'
+                }}>
+                  {status?.ai_provider || '-'}
+                </div>
               </div>
               <div className="text-right">
-                <div className="text-sm text-gray-400">Cycles</div>
-                <div className="font-semibold">{status?.call_count || 0}</div>
+                <div className="text-xs text-gray-400 mono">Cycles</div>
+                <div className="font-semibold mono text-gray-200">{status?.call_count || 0}</div>
               </div>
             </div>
           </div>
@@ -78,7 +83,7 @@ function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Account Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8 animate-fade-in">
           <StatCard
             title="Total Equity"
             value={`${account?.total_equity.toFixed(2) || '0.00'} USDT`}
@@ -101,6 +106,11 @@ function App() {
             value={`${account?.position_count || 0}`}
             subtitle={`Margin: ${account?.margin_used_pct.toFixed(1) || '0.0'}%`}
           />
+        </div>
+
+        {/* Equity Chart */}
+        <div className="mb-8 animate-fade-in">
+          <EquityChart />
         </div>
 
         {/* Statistics */}
@@ -237,18 +247,18 @@ function StatCard({
   subtitle?: string;
 }) {
   return (
-    <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
-      <div className="text-sm text-gray-400 mb-2">{title}</div>
-      <div className="text-2xl font-bold mb-1">{value}</div>
+    <div className="bg-gray-900/50 rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-all">
+      <div className="text-xs text-gray-400 mb-2 mono uppercase tracking-wider">{title}</div>
+      <div className="text-2xl font-bold mb-1 mono">{value}</div>
       {change !== undefined && (
         <div
-          className={`text-sm ${positive ? 'text-green-400' : 'text-red-400'}`}
+          className={`text-sm mono font-semibold ${positive ? 'text-green-400' : 'text-red-400'}`}
         >
           {positive ? '+' : ''}
           {change.toFixed(2)}%
         </div>
       )}
-      {subtitle && <div className="text-sm text-gray-400 mt-1">{subtitle}</div>}
+      {subtitle && <div className="text-xs text-gray-400 mt-2 mono">{subtitle}</div>}
     </div>
   );
 }

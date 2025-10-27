@@ -50,4 +50,11 @@ export const api = {
     if (!res.ok) throw new Error('获取统计信息失败');
     return res.json();
   },
+
+  // 获取收益率历史数据
+  async getEquityHistory(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/equity-history`);
+    if (!res.ok) throw new Error('获取历史数据失败');
+    return res.json();
+  },
 };
