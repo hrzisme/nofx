@@ -24,8 +24,10 @@ func NewFuturesTrader(apiKey, secretKey string) *FuturesTrader {
 
 // GetBalance 获取账户余额
 func (t *FuturesTrader) GetBalance() (map[string]interface{}, error) {
+	log.Printf("🔄 正在调用币安API获取账户余额...")
 	account, err := t.client.NewGetAccountService().Do(context.Background())
 	if err != nil {
+		log.Printf("❌ 币安API调用失败: %v", err)
 		return nil, fmt.Errorf("获取账户信息失败: %w", err)
 	}
 
@@ -33,6 +35,11 @@ func (t *FuturesTrader) GetBalance() (map[string]interface{}, error) {
 	result["totalWalletBalance"], _ = strconv.ParseFloat(account.TotalWalletBalance, 64)
 	result["availableBalance"], _ = strconv.ParseFloat(account.AvailableBalance, 64)
 	result["totalUnrealizedProfit"], _ = strconv.ParseFloat(account.TotalUnrealizedProfit, 64)
+
+	log.Printf("✓ 币安API返回: 总余额=%s, 可用=%s, 未实现盈亏=%s",
+		account.TotalWalletBalance,
+		account.AvailableBalance,
+		account.TotalUnrealizedProfit)
 
 	return result, nil
 }

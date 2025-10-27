@@ -103,14 +103,21 @@ func (s *Server) handleStatus(c *gin.Context) {
 
 // handleAccount 账户信息
 func (s *Server) handleAccount(c *gin.Context) {
+	log.Printf("📊 收到账户信息请求")
 	account, err := s.autoTrader.GetAccountInfo()
 	if err != nil {
+		log.Printf("❌ 获取账户信息失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取账户信息失败: %v", err),
 		})
 		return
 	}
 
+	log.Printf("✓ 返回账户信息: 净值=%.2f, 可用=%.2f, 盈亏=%.2f (%.2f%%)",
+		account["total_equity"],
+		account["available_balance"],
+		account["total_pnl"],
+		account["total_pnl_pct"])
 	c.JSON(http.StatusOK, account)
 }
 
