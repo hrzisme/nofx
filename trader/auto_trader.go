@@ -331,7 +331,7 @@ func (at *AutoTrader) buildTradingContext() (*market.TradingContext, error) {
 	// 3. 获取候选币种池（按AI500评分排序）
 	// 无论有没有持仓，都分析相同数量的币种（让AI看到所有好机会）
 	// AI会根据保证金使用率和现有持仓情况，自己决定是否要换仓
-	const topCoinLimit = 50 // 固定分析前50个评分最高的币种
+	const topCoinLimit = 20 // 固定分析前20个评分最高的币种
 
 	// 获取评分最高的N个币种（从AI500池子）
 	candidateSymbols, err := pool.GetTopRatedCoins(topCoinLimit)
@@ -339,7 +339,7 @@ func (at *AutoTrader) buildTradingContext() (*market.TradingContext, error) {
 		return nil, fmt.Errorf("获取币种池失败: %w", err)
 	}
 
-	log.Printf("📋 从AI500获取前%d个高评分币种用于AI分析（含换仓机会）", topCoinLimit)
+	log.Printf("📋 从AI500获取前%d个高评分币种用于分析（评分从高到低）", topCoinLimit)
 
 	// 主流币种默认加入池子（作为补充）
 	mainCoins := []string{

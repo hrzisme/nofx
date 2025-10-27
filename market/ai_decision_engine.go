@@ -129,9 +129,8 @@ func fetchMarketDataForContext(ctx *TradingContext) error {
 // calculateMaxCandidates 根据账户状态计算需要分析的候选币种数量
 func calculateMaxCandidates(ctx *TradingContext) int {
 	// 直接返回候选池的全部币种数量
-	// 因为候选池已经在 auto_trader.go 中根据保证金使用率筛选过了
-	// 无持仓时：30个评分最高币种
-	// 有持仓时：15/25/35个评分最高币种（根据保证金使用率）
+	// 因为候选池已经在 auto_trader.go 中筛选过了
+	// 固定分析前20个评分最高的币种（来自AI500）
 	return len(ctx.CandidateCoins)
 }
 
