@@ -81,6 +81,9 @@ func (s *Server) setupRoutes() {
 
 		// 统计信息
 		api.GET("/statistics", s.handleStatistics)
+
+		// 收益率历史数据
+		api.GET("/equity-history", s.handleEquityHistory)
 	}
 }
 
@@ -175,6 +178,40 @@ func (s *Server) handleStatistics(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+// handleEquityHistory 收益率历史数据
+func (s *Server) handleEquityHistory(c *gin.Context) {
+	// 获取最近30条决策记录
+	records, err := s.decisionLog.GetLatestRecords(30)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("获取历史数据失败: %v", err),
+		})
+		return
+	}
+
+	// 构建收益率历史数据点
+	type EquityPoint struct {
+		Timestamp   string  `json:"timestamp"`
+		TotalEquity float64 `json:"total_equity"`
+		PnL         float64 `json:"pnl"`
+		PnLPct      float64 `json:"pnl_pct"`
+		CycleNumber int     `json:"cycle_number"`
+	}
+
+	var history []EquityPoint
+	for _, record := range records {
+		history = append(history, EquityPoint{
+			Timestamp:   record.Timestamp.Format("2006-01-02 15:04:05"),
+			TotalEquity: record.AccountState.TotalBalance,
+			PnL:         record.AccountState.TotalUnrealizedProfit,
+			PnLPct:      0, // 需要从初始余额计算
+			CycleNumber: record.CycleNumber,
+		})
+	}
+
+	c.JSON(http.StatusOK, history)
+}
+
 // Start 启动服务器
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.port)
@@ -186,6 +223,7 @@ func (s *Server) Start() error {
 	log.Printf("  • GET  /api/decisions       - 决策日志（最近30条）")
 	log.Printf("  • GET  /api/decisions/latest - 最新决策（最近5条）")
 	log.Printf("  • GET  /api/statistics      - 统计信息")
+	log.Printf("  • GET  /api/equity-history  - 收益率历史数据")
 	log.Printf("  • GET  /health              - 健康检查")
 	log.Println()
 

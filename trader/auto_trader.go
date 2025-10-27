@@ -26,6 +26,9 @@ type AutoTraderConfig struct {
 	// 扫描配置
 	ScanInterval time.Duration // 扫描间隔（建议3分钟）
 
+	// 账户配置
+	InitialBalance float64 // 初始金额（用于计算盈亏，需手动设置）
+
 	// 风险控制（仅作为提示，AI可自主决定）
 	MaxDailyLoss    float64       // 最大日亏损百分比（提示）
 	MaxDrawdown     float64       // 最大回撤百分比（提示）
@@ -65,15 +68,9 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 	// 初始化币安合约交易器
 	trader := NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
 
-	// 获取初始余额
-	balance, err := trader.GetBalance()
-	if err != nil {
-		return nil, fmt.Errorf("获取余额失败: %w", err)
-	}
-
-	initialBalance := 0.0
-	if avail, ok := balance["availableBalance"].(float64); ok {
-		initialBalance = avail
+	// 验证初始金额配置
+	if config.InitialBalance <= 0 {
+		return nil, fmt.Errorf("初始金额必须大于0，请在配置中设置InitialBalance")
 	}
 
 	// 初始化决策日志记录器
@@ -83,7 +80,7 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		config:         config,
 		trader:         trader,
 		decisionLogger: decisionLogger,
-		initialBalance: initialBalance,
+		initialBalance: config.InitialBalance,
 		lastResetTime:  time.Now(),
 		startTime:      time.Now(),
 		callCount:      0,

@@ -34,6 +34,9 @@ func main() {
 		// 扫描配置
 		ScanInterval: 3 * time.Minute, // 每3分钟一次AI决策
 
+		// 账户配置
+		InitialBalance: 1000.0, // 初始金额（USDT），用于计算盈亏百分比
+
 		// 风险控制（仅作为提示，AI可自主决定）
 		MaxDailyLoss:    5.0,              // 最大日亏损5%（提示）
 		MaxDrawdown:     10.0,             // 最大回撤10%（提示）
@@ -57,6 +60,7 @@ func main() {
 	fmt.Println("📋 系统配置:")
 	fmt.Printf("  • AI模型: %s\n", getAIName(config.UseQwen))
 	fmt.Printf("  • 决策周期: %v (每3分钟)\n", config.ScanInterval)
+	fmt.Printf("  • 初始金额: %.2f USDT\n", config.InitialBalance)
 	fmt.Println()
 	fmt.Println("🤖 AI全权决策模式:")
 	fmt.Println("  • AI将自主决定每笔交易的杠杆倍数（1-20倍）")
