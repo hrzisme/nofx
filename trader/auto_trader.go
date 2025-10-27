@@ -337,9 +337,34 @@ func (at *AutoTrader) buildTradingContext() (*market.TradingContext, error) {
 		return nil, fmt.Errorf("获取币种池失败: %w", err)
 	}
 
+	// 主流币种默认加入池子
+	mainCoins := []string{
+		"BTCUSDT",
+		"ETHUSDT",
+		"SOLUSDT",
+		"BNBUSDT",
+		"XRPUSDT",
+		"DOGEUSDT",
+	}
+
+	// 使用map去重
+	symbolMap := make(map[string]bool)
+
+	// 先添加主流币种
 	var candidateCoins []market.CandidateCoin
+	for _, symbol := range mainCoins {
+		if !symbolMap[symbol] {
+			candidateCoins = append(candidateCoins, market.CandidateCoin{Symbol: symbol})
+			symbolMap[symbol] = true
+		}
+	}
+
+	// 再添加池子中的其他币种
 	for _, symbol := range candidateSymbols {
-		candidateCoins = append(candidateCoins, market.CandidateCoin{Symbol: symbol})
+		if !symbolMap[symbol] {
+			candidateCoins = append(candidateCoins, market.CandidateCoin{Symbol: symbol})
+			symbolMap[symbol] = true
+		}
 	}
 
 	// 4. 计算总盈亏

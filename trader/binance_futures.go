@@ -231,6 +231,11 @@ func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]i
 
 	log.Printf("✓ 平多仓成功: %s 数量: %s", symbol, quantityStr)
 
+	// 平仓后取消该币种的所有挂单（止损止盈单）
+	if err := t.CancelAllOrders(symbol); err != nil {
+		log.Printf("  ⚠ 取消挂单失败: %v", err)
+	}
+
 	result := make(map[string]interface{})
 	result["orderId"] = order.OrderID
 	result["symbol"] = order.Symbol
@@ -280,11 +285,30 @@ func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]
 
 	log.Printf("✓ 平空仓成功: %s 数量: %s", symbol, quantityStr)
 
+	// 平仓后取消该币种的所有挂单（止损止盈单）
+	if err := t.CancelAllOrders(symbol); err != nil {
+		log.Printf("  ⚠ 取消挂单失败: %v", err)
+	}
+
 	result := make(map[string]interface{})
 	result["orderId"] = order.OrderID
 	result["symbol"] = order.Symbol
 	result["status"] = order.Status
 	return result, nil
+}
+
+// CancelAllOrders 取消该币种的所有挂单
+func (t *FuturesTrader) CancelAllOrders(symbol string) error {
+	err := t.client.NewCancelAllOpenOrdersService().
+		Symbol(symbol).
+		Do(context.Background())
+
+	if err != nil {
+		return fmt.Errorf("取消挂单失败: %w", err)
+	}
+
+	log.Printf("  ✓ 已取消 %s 的所有挂单", symbol)
+	return nil
 }
 
 // GetMarketPrice 获取市场价格
