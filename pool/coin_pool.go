@@ -6,18 +6,29 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 )
 
 // CoinPoolConfig 币种池配置
 type CoinPoolConfig struct {
-	APIURL  string
-	Timeout time.Duration
+	APIURL   string
+	Timeout  time.Duration
+	CacheDir string
 }
 
 var coinPoolConfig = CoinPoolConfig{
-	APIURL:  "http://43.128.34.180:30006/api/ai500/list?auth=admin123sadasd3r323",
-	Timeout: 30 * time.Second, // 增加到30秒
+	APIURL:   "http://43.128.34.180:30006/api/ai500/list?auth=admin123sadasd3r323",
+	Timeout:  30 * time.Second, // 增加到30秒
+	CacheDir: "coin_pool_cache",
+}
+
+// CoinPoolCache 币种池缓存
+type CoinPoolCache struct {
+	Coins      []CoinInfo `json:"coins"`
+	FetchedAt  time.Time  `json:"fetched_at"`
+	SourceType string     `json:"source_type"` // "api" or "cache"
 }
 
 // CoinInfo 币种信息
@@ -47,11 +58,12 @@ func SetCoinPoolAPI(apiURL string) {
 	coinPoolConfig.APIURL = apiURL
 }
 
-// GetCoinPool 获取币种池列表（带重试机制）
+// GetCoinPool 获取币种池列表（带重试和缓存机制）
 func GetCoinPool() ([]CoinInfo, error) {
 	maxRetries := 3
 	var lastErr error
 
+	// 尝试从API获取
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		if attempt > 1 {
 			log.Printf("⚠️  第%d次重试获取币种池（共%d次）...", attempt, maxRetries)
@@ -63,6 +75,10 @@ func GetCoinPool() ([]CoinInfo, error) {
 			if attempt > 1 {
 				log.Printf("✓ 第%d次重试成功", attempt)
 			}
+			// 成功获取后保存到缓存
+			if err := saveCoinPoolCache(coins); err != nil {
+				log.Printf("⚠️  保存币种池缓存失败: %v", err)
+			}
 			return coins, nil
 		}
 
@@ -70,7 +86,16 @@ func GetCoinPool() ([]CoinInfo, error) {
 		log.Printf("❌ 第%d次请求失败: %v", attempt, err)
 	}
 
-	return nil, fmt.Errorf("获取币种池失败（重试%d次后）: %w", maxRetries, lastErr)
+	// API获取失败，尝试使用缓存
+	log.Printf("⚠️  API请求全部失败，尝试使用历史缓存数据...")
+	cachedCoins, err := loadCoinPoolCache()
+	if err == nil {
+		log.Printf("✓ 使用历史缓存数据（共%d个币种）", len(cachedCoins))
+		return cachedCoins, nil
+	}
+
+	log.Printf("❌ 无法加载缓存数据: %v", err)
+	return nil, fmt.Errorf("获取币种池失败（API重试%d次后，缓存也不可用）: %w", maxRetries, lastErr)
 }
 
 // fetchCoinPool 实际执行币种池请求
@@ -118,6 +143,65 @@ func fetchCoinPool() ([]CoinInfo, error) {
 
 	log.Printf("✓ 成功获取%d个币种", len(coins))
 	return coins, nil
+}
+
+// saveCoinPoolCache 保存币种池到缓存文件
+func saveCoinPoolCache(coins []CoinInfo) error {
+	// 确保缓存目录存在
+	if err := os.MkdirAll(coinPoolConfig.CacheDir, 0755); err != nil {
+		return fmt.Errorf("创建缓存目录失败: %w", err)
+	}
+
+	cache := CoinPoolCache{
+		Coins:      coins,
+		FetchedAt:  time.Now(),
+		SourceType: "api",
+	}
+
+	data, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化缓存数据失败: %w", err)
+	}
+
+	cachePath := filepath.Join(coinPoolConfig.CacheDir, "latest.json")
+	if err := ioutil.WriteFile(cachePath, data, 0644); err != nil {
+		return fmt.Errorf("写入缓存文件失败: %w", err)
+	}
+
+	log.Printf("💾 已保存币种池缓存（%d个币种）", len(coins))
+	return nil
+}
+
+// loadCoinPoolCache 从缓存文件加载币种池
+func loadCoinPoolCache() ([]CoinInfo, error) {
+	cachePath := filepath.Join(coinPoolConfig.CacheDir, "latest.json")
+
+	// 检查文件是否存在
+	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("缓存文件不存在")
+	}
+
+	data, err := ioutil.ReadFile(cachePath)
+	if err != nil {
+		return nil, fmt.Errorf("读取缓存文件失败: %w", err)
+	}
+
+	var cache CoinPoolCache
+	if err := json.Unmarshal(data, &cache); err != nil {
+		return nil, fmt.Errorf("解析缓存数据失败: %w", err)
+	}
+
+	// 检查缓存年龄
+	cacheAge := time.Since(cache.FetchedAt)
+	if cacheAge > 24*time.Hour {
+		log.Printf("⚠️  缓存数据较旧（%.1f小时前），但仍可使用", cacheAge.Hours())
+	} else {
+		log.Printf("📂 缓存数据时间: %s（%.1f分钟前）",
+			cache.FetchedAt.Format("2006-01-02 15:04:05"),
+			cacheAge.Minutes())
+	}
+
+	return cache.Coins, nil
 }
 
 // GetAvailableCoins 获取可用的币种列表（过滤不可用的）
