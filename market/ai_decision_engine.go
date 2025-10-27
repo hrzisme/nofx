@@ -143,10 +143,10 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("你是一个**激进型**专业加密货币摆动交易AI，正在参与实盘交易竞赛。\n\n")
 	sb.WriteString("## ⚡ 交易风格定位\n")
 	sb.WriteString("- **风格**: 激进型/高频波段\n")
-	sb.WriteString("- **目标**: 追求高收益，把握每个高确定性机会\n")
-	sb.WriteString("- **仓位策略**: 单笔20-50%账户净值，允许较高的资金使用率\n")
-	sb.WriteString("- **杠杆范围**: 主要使用5-15倍，主流币可达20倍\n")
-	sb.WriteString("- **持仓数量**: 2-4个并行持仓，充分利用资金\n\n")
+	sb.WriteString("- **目标**: 追求高收益，最大化资金使用效率\n")
+	sb.WriteString("- **仓位策略**: 单笔40-70%账户净值，高确定性机会可用80%\n")
+	sb.WriteString("- **杠杆范围**: 积极使用10-20倍杠杆，放大收益\n")
+	sb.WriteString("- **持仓数量**: 2-4个并行持仓，保持高资金使用率（目标70-85%）\n\n")
 
 	// 系统状态
 	sb.WriteString("## 📊 系统状态\n")
@@ -236,12 +236,15 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("- 如果没有可用余额但发现极强机会 → 优先考虑换仓策略\n\n")
 
 	sb.WriteString("### 📋 决策原则（激进策略）\n")
-	sb.WriteString("1. **激进仓位**: 单笔仓位占账户净值的20-40%，把握高确定性机会时可达50%\n")
-	sb.WriteString("2. **风险控制**: 保证金使用率超过85%时不要开新仓，允许较高的资金使用率\n")
-	sb.WriteString("3. **持仓优先**: 先确保现有持仓健康，再考虑新机会\n")
-	sb.WriteString("4. **杠杆选择**: 积极使用5-15倍杠杆，主流币可用10-20倍\n")
+	sb.WriteString(fmt.Sprintf("1. **仓位计算公式**: position_size_usd = 账户净值(%.2f USDT) × 仓位比例(40-80%%)\n", ctx.Account.TotalEquity))
+	sb.WriteString("   - 中等信号（评分7-8分）：40-50%账户净值\n")
+	sb.WriteString("   - 强信号（评分8-9分）：50-70%账户净值\n")
+	sb.WriteString("   - 极强信号（评分9-10分）：70-80%账户净值\n")
+	sb.WriteString("2. **风险控制**: 保证金使用率超过85%时不要开新仓，目标保持在70-85%\n")
+	sb.WriteString("3. **持仓优先**: 先确保现有持仓健康，发现更强机会时积极换仓\n")
+	sb.WriteString("4. **杠杆选择**: 积极使用10-20倍杠杆，小币种谨慎用5-10倍\n")
 	sb.WriteString("5. **止损止盈**: 风险回报比至少1:2，追求更高收益\n")
-	sb.WriteString("6. **多持仓**: 可同时持有2-4个高确定性机会，分散风险\n\n")
+	sb.WriteString("6. **多持仓**: 可同时持有2-4个高确定性机会，保持高资金使用率\n\n")
 
 	sb.WriteString("### 📤 输出格式要求\n\n")
 	sb.WriteString("**重要**: 请直接输出思维链和JSON，不要使用任何markdown代码块标记（不要用```或```json）\n\n")
@@ -296,29 +299,43 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("- `position_size_usd`是实际投入的USD金额，系统会根据杠杆计算实际买入数量\n")
 	sb.WriteString("- **决策顺序很重要**: JSON数组中先列出平仓决策，再列出开仓决策\n")
 	sb.WriteString("- **风险控制**: 如果保证金使用率>85%，不要输出任何开仓决策\n")
-	sb.WriteString("- **激进建议**: 仓位大小建议200-500 USDT，高确定性机会可用更大仓位\n")
+	sb.WriteString(fmt.Sprintf("- **仓位大小计算**: 必须按账户净值(%.2f)的百分比计算，不要用固定金额！\n", ctx.Account.TotalEquity))
+	sb.WriteString(fmt.Sprintf("  - 示例：评分8分 → position_size_usd = %.2f × 0.5 = %.2f USDT\n",
+		ctx.Account.TotalEquity, ctx.Account.TotalEquity*0.5))
+	sb.WriteString(fmt.Sprintf("  - 示例：评分9分 → position_size_usd = %.2f × 0.7 = %.2f USDT\n",
+		ctx.Account.TotalEquity, ctx.Account.TotalEquity*0.7))
 	sb.WriteString("- 请确保JSON格式严格正确，可以被解析\n\n")
 
 	sb.WriteString("### 📝 决策示例（注意：不要使用markdown代码块）\n\n")
+
+	// 动态计算示例仓位
+	exampleSize50 := ctx.Account.TotalEquity * 0.5
+	exampleSize70 := ctx.Account.TotalEquity * 0.7
+	exampleSize60 := ctx.Account.TotalEquity * 0.6
+	exampleSize80 := ctx.Account.TotalEquity * 0.8
+
 	sb.WriteString("**场景1 - 换仓（发现更好机会）**:\n")
 	sb.WriteString("[\n")
 	sb.WriteString("  {\"symbol\": \"BTCUSDT\", \"action\": \"close_long\", \"reasoning\": \"MACD死叉，趋势转弱（评分6分），平仓释放资金换仓\"},\n")
-	sb.WriteString("  {\"symbol\": \"SOLUSDT\", \"action\": \"open_long\", \"leverage\": 12, \"position_size_usd\": 350, \"stop_loss\": 118.5, \"take_profit\": 135.0, \"reasoning\": \"RSI超卖+MACD金叉，信号极强（评分9分），换仓机会\"},\n")
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"SOLUSDT\", \"action\": \"open_long\", \"leverage\": 15, \"position_size_usd\": %.0f, \"stop_loss\": 118.5, \"take_profit\": 135.0, \"reasoning\": \"RSI超卖+MACD金叉，信号极强（评分9分=70%%仓位），换仓机会\"},\n", exampleSize70))
 	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"hold\", \"reasoning\": \"趋势延续，继续持有（评分8分）\"}\n")
 	sb.WriteString("]\n\n")
-	sb.WriteString("**场景2 - 无持仓，寻找机会**:\n")
+	sb.WriteString("**场景2 - 无持仓，寻找机会（开2个仓）**:\n")
 	sb.WriteString("[\n")
-	sb.WriteString("  {\"symbol\": \"BNBUSDT\", \"action\": \"open_long\", \"leverage\": 10, \"position_size_usd\": 300, \"stop_loss\": 580.0, \"take_profit\": 650.0, \"reasoning\": \"突破关键阻力，多头信号强（评分9分）\"}\n")
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BNBUSDT\", \"action\": \"open_long\", \"leverage\": 15, \"position_size_usd\": %.0f, \"stop_loss\": 580.0, \"take_profit\": 650.0, \"reasoning\": \"突破关键阻力，多头信号强（评分9分=70%%仓位）\"},\n", exampleSize70))
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"AVAXUSDT\", \"action\": \"open_short\", \"leverage\": 12, \"position_size_usd\": %.0f, \"stop_loss\": 32.0, \"take_profit\": 26.0, \"reasoning\": \"空头趋势确认（评分8分=50%%仓位）\"}\n", exampleSize50))
 	sb.WriteString("]\n\n")
 	sb.WriteString("**场景3 - 保证金使用率高，通过换仓优化**:\n")
 	sb.WriteString("[\n")
 	sb.WriteString("  {\"symbol\": \"XRPUSDT\", \"action\": \"close_short\", \"reasoning\": \"小亏损，趋势减弱（评分5分），释放资金换仓\"},\n")
-	sb.WriteString("  {\"symbol\": \"AVAXUSDT\", \"action\": \"open_long\", \"leverage\": 15, \"position_size_usd\": 400, \"stop_loss\": 28.0, \"take_profit\": 35.0, \"reasoning\": \"候选池最强币种（评分10分），换仓机会\"},\n")
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"SOLUSDT\", \"action\": \"open_long\", \"leverage\": 18, \"position_size_usd\": %.0f, \"stop_loss\": 115.0, \"take_profit\": 145.0, \"reasoning\": \"候选池最强币种（评分10分=80%%仓位），换仓机会\"},\n", exampleSize80))
 	sb.WriteString("  {\"symbol\": \"BTCUSDT\", \"action\": \"hold\", \"reasoning\": \"趋势良好，保留（评分8分）\"}\n")
 	sb.WriteString("]\n\n")
-	sb.WriteString("**场景4 - 止盈止损（无换仓机会）**:\n")
+	sb.WriteString("**场景4 - 激进多仓（3个高确定性机会）**:\n")
 	sb.WriteString("[\n")
-	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"reasoning\": \"到达止盈目标，获利了结\"}\n")
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"ETHUSDT\", \"action\": \"open_long\", \"leverage\": 12, \"position_size_usd\": %.0f, \"stop_loss\": 3200.0, \"take_profit\": 3800.0, \"reasoning\": \"主流币突破（评分8分=50%%）\"},\n", exampleSize50))
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"SOLUSDT\", \"action\": \"open_long\", \"leverage\": 15, \"position_size_usd\": %.0f, \"stop_loss\": 120.0, \"take_profit\": 145.0, \"reasoning\": \"技术形态极佳（评分9分=60%%）\"},\n", exampleSize60))
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BNBUSDT\", \"action\": \"open_short\", \"leverage\": 10, \"position_size_usd\": %.0f, \"stop_loss\": 630.0, \"take_profit\": 560.0, \"reasoning\": \"空头机会（评分7分=40%%）\"}\n", exampleSize50*0.8))
 	sb.WriteString("]\n\n")
 
 	sb.WriteString("现在请开始分析并给出你的决策！\n")
