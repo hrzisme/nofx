@@ -223,7 +223,6 @@ func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]i
 		PositionSide(futures.PositionSideTypeLong).
 		Type(futures.OrderTypeMarket).
 		Quantity(quantityStr).
-		ReduceOnly(true).
 		Do(context.Background())
 
 	if err != nil {
@@ -273,7 +272,6 @@ func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]
 		PositionSide(futures.PositionSideTypeShort).
 		Type(futures.OrderTypeMarket).
 		Quantity(quantityStr).
-		ReduceOnly(true).
 		Do(context.Background())
 
 	if err != nil {
@@ -405,32 +403,59 @@ func (t *FuturesTrader) GetSymbolPrecision(symbol string) (int, error) {
 			for _, filter := range s.Filters {
 				if filter["filterType"] == "LOT_SIZE" {
 					stepSize := filter["stepSize"].(string)
-					// 计算小数位数
-					precision := 0
-					dotFound := false
-					for i := 0; i < len(stepSize); i++ {
-						if stepSize[i] == '.' {
-							dotFound = true
-							continue
-						}
-						if dotFound {
-							if stepSize[i] != '0' {
-								break
-							}
-							precision++
-						}
-					}
-					// 如果stepSize是1.0，则精度为0；如果是0.01，则精度为2
-					if stepSize[len(stepSize)-1] != '0' {
-						precision++
-					}
+					precision := calculatePrecision(stepSize)
+					log.Printf("  %s 数量精度: %d (stepSize: %s)", symbol, precision, stepSize)
 					return precision, nil
 				}
 			}
 		}
 	}
 
+	log.Printf("  ⚠ %s 未找到精度信息，使用默认精度3", symbol)
 	return 3, nil // 默认精度为3
+}
+
+// calculatePrecision 从stepSize计算精度
+func calculatePrecision(stepSize string) int {
+	// 去除尾部的0
+	stepSize = trimTrailingZeros(stepSize)
+
+	// 查找小数点
+	dotIndex := -1
+	for i := 0; i < len(stepSize); i++ {
+		if stepSize[i] == '.' {
+			dotIndex = i
+			break
+		}
+	}
+
+	// 如果没有小数点或小数点在最后，精度为0
+	if dotIndex == -1 || dotIndex == len(stepSize)-1 {
+		return 0
+	}
+
+	// 返回小数点后的位数
+	return len(stepSize) - dotIndex - 1
+}
+
+// trimTrailingZeros 去除尾部的0
+func trimTrailingZeros(s string) string {
+	// 如果没有小数点，直接返回
+	if !stringContains(s, ".") {
+		return s
+	}
+
+	// 从后向前遍历，去除尾部的0
+	for len(s) > 0 && s[len(s)-1] == '0' {
+		s = s[:len(s)-1]
+	}
+
+	// 如果最后一位是小数点，也去掉
+	if len(s) > 0 && s[len(s)-1] == '.' {
+		s = s[:len(s)-1]
+	}
+
+	return s
 }
 
 // FormatQuantity 格式化数量到正确的精度

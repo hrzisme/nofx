@@ -239,8 +239,9 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("6. **全局平衡**: 不要让单一币种占据过多仓位\n\n")
 
 	sb.WriteString("### 📤 输出格式要求\n\n")
-	sb.WriteString("**第一部分**: `cot_trace` (思维链分析)\n")
-	sb.WriteString("```\n")
+	sb.WriteString("**重要**: 请直接输出思维链和JSON，不要使用任何markdown代码块标记（不要用```或```json）\n\n")
+
+	sb.WriteString("**第一部分**: 思维链分析（纯文本，按以下格式）\n\n")
 	sb.WriteString("第一步：现有持仓分析\n")
 	sb.WriteString("- [如无持仓，写\"无持仓\"并跳过]\n")
 	sb.WriteString("- 逐个分析每个持仓的技术指标、盈亏状态\n")
@@ -260,17 +261,16 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("- 平仓决策: X个\n")
 	sb.WriteString("- 开仓决策: X个\n")
 	sb.WriteString("- 持有决策: X个\n")
-	sb.WriteString("- 整体策略: ...\n")
-	sb.WriteString("```\n\n")
+	sb.WriteString("- 整体策略: ...\n\n")
+	sb.WriteString("---\n\n")
 
-	sb.WriteString("**第二部分**: `decisions` (JSON数组)\n")
-	sb.WriteString("```json\n")
+	sb.WriteString("**第二部分**: 决策JSON数组（纯JSON，不要任何代码块标记）\n\n")
 	sb.WriteString("[\n")
 	sb.WriteString("  {\n")
 	sb.WriteString("    \"symbol\": \"BTCUSDT\",\n")
-	sb.WriteString("    \"action\": \"open_long\",  // 可选: open_long, open_short, close_long, close_short, hold, wait\n")
-	sb.WriteString("    \"leverage\": 10,          // AI自主决定（1-20）\n")
-	sb.WriteString("    \"position_size_usd\": 100.0,  // AI自主决定仓位大小（USD）\n")
+	sb.WriteString("    \"action\": \"open_long\",\n")
+	sb.WriteString("    \"leverage\": 10,\n")
+	sb.WriteString("    \"position_size_usd\": 100.0,\n")
 	sb.WriteString("    \"stop_loss\": 45000.0,\n")
 	sb.WriteString("    \"take_profit\": 50000.0,\n")
 	sb.WriteString("    \"reasoning\": \"简短理由\"\n")
@@ -280,8 +280,7 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("    \"action\": \"hold\",\n")
 	sb.WriteString("    \"reasoning\": \"继续观察，趋势未明\"\n")
 	sb.WriteString("  }\n")
-	sb.WriteString("]\n")
-	sb.WriteString("```\n\n")
+	sb.WriteString("]\n\n")
 
 	sb.WriteString("### ⚠️ 重要说明\n")
 	sb.WriteString("- `action`类型: **open_long**(开多), **open_short**(开空), **close_long**(平多), **close_short**(平空), **hold**(持有), **wait**(观望)\n")
@@ -292,28 +291,21 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("- **风险控制**: 如果保证金使用率>70%，不要输出任何开仓决策\n")
 	sb.WriteString("- 请确保JSON格式严格正确，可以被解析\n\n")
 
-	sb.WriteString("### 📝 决策示例\n")
+	sb.WriteString("### 📝 决策示例（注意：不要使用markdown代码块）\n\n")
 	sb.WriteString("**场景1 - 有持仓需要调整**:\n")
-	sb.WriteString("```json\n")
 	sb.WriteString("[\n")
 	sb.WriteString("  {\"symbol\": \"BTCUSDT\", \"action\": \"close_long\", \"reasoning\": \"RSI超买且MACD死叉，止盈离场\"},\n")
 	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"hold\", \"reasoning\": \"趋势延续，继续持有\"}\n")
-	sb.WriteString("]\n")
-	sb.WriteString("```\n\n")
+	sb.WriteString("]\n\n")
 	sb.WriteString("**场景2 - 无持仓，寻找机会**:\n")
-	sb.WriteString("```json\n")
 	sb.WriteString("[\n")
 	sb.WriteString("  {\"symbol\": \"SOLUSDT\", \"action\": \"open_long\", \"leverage\": 5, \"position_size_usd\": 100, \"stop_loss\": 18.5, \"take_profit\": 21.5, \"reasoning\": \"RSI超卖反弹\"}\n")
-	sb.WriteString("]\n")
-	sb.WriteString("```\n\n")
+	sb.WriteString("]\n\n")
 	sb.WriteString("**场景3 - 保证金使用率高，只管理现有持仓**:\n")
-	sb.WriteString("```json\n")
 	sb.WriteString("[\n")
 	sb.WriteString("  {\"symbol\": \"BTCUSDT\", \"action\": \"hold\", \"reasoning\": \"趋势良好，继续持有\"},\n")
 	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_short\", \"reasoning\": \"止损，趋势反转\"}\n")
-	sb.WriteString("  // 注意：保证金使用率75%，不开新仓\n")
-	sb.WriteString("]\n")
-	sb.WriteString("```\n\n")
+	sb.WriteString("]\n\n")
 
 	sb.WriteString("现在请开始分析并给出你的决策！\n")
 
@@ -357,13 +349,11 @@ func parseFullDecisionResponse(aiResponse string) (*AIFullDecision, error) {
 
 // extractCoTTrace 提取思维链分析
 func extractCoTTrace(response string) string {
-	// 尝试提取思维链部分（通常在JSON之前）
-	jsonStart := strings.Index(response, "```json")
-	if jsonStart == -1 {
-		jsonStart = strings.Index(response, "[")
-	}
+	// 查找JSON数组的开始位置
+	jsonStart := strings.Index(response, "[")
 
 	if jsonStart > 0 {
+		// 思维链是JSON数组之前的内容
 		return strings.TrimSpace(response[:jsonStart])
 	}
 
@@ -373,24 +363,19 @@ func extractCoTTrace(response string) string {
 
 // extractDecisions 提取JSON决策列表
 func extractDecisions(response string) ([]TradingDecision, error) {
-	// 查找JSON数组
-	jsonStart := strings.Index(response, "```json")
-	jsonEnd := strings.LastIndex(response, "```")
-
-	var jsonContent string
-	if jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart {
-		jsonContent = strings.TrimSpace(response[jsonStart+7 : jsonEnd])
-	} else {
-		// 尝试直接查找JSON数组
-		arrayStart := strings.Index(response, "[")
-		arrayEnd := strings.LastIndex(response, "]")
-
-		if arrayStart == -1 || arrayEnd == -1 || arrayEnd <= arrayStart {
-			return nil, fmt.Errorf("无法找到JSON数组")
-		}
-
-		jsonContent = strings.TrimSpace(response[arrayStart : arrayEnd+1])
+	// 直接查找JSON数组 - 找第一个完整的JSON数组
+	arrayStart := strings.Index(response, "[")
+	if arrayStart == -1 {
+		return nil, fmt.Errorf("无法找到JSON数组起始")
 	}
+
+	// 从 [ 开始，匹配括号找到对应的 ]
+	arrayEnd := findMatchingBracket(response, arrayStart)
+	if arrayEnd == -1 {
+		return nil, fmt.Errorf("无法找到JSON数组结束")
+	}
+
+	jsonContent := strings.TrimSpace(response[arrayStart : arrayEnd+1])
 
 	// 解析JSON
 	var decisions []TradingDecision
@@ -406,6 +391,28 @@ func extractDecisions(response string) ([]TradingDecision, error) {
 	}
 
 	return decisions, nil
+}
+
+// findMatchingBracket 查找匹配的右括号
+func findMatchingBracket(s string, start int) int {
+	if start >= len(s) || s[start] != '[' {
+		return -1
+	}
+
+	depth := 0
+	for i := start; i < len(s); i++ {
+		switch s[i] {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+
+	return -1
 }
 
 // validateDecision 验证单个决策的有效性
