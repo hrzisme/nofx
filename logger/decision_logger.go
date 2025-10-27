@@ -109,14 +109,14 @@ func (l *DecisionLogger) LogDecision(record *DecisionRecord) error {
 	return nil
 }
 
-// GetLatestRecords 获取最近N条记录
+// GetLatestRecords 获取最近N条记录（按时间正序：从旧到新）
 func (l *DecisionLogger) GetLatestRecords(n int) ([]*DecisionRecord, error) {
 	files, err := ioutil.ReadDir(l.logDir)
 	if err != nil {
 		return nil, fmt.Errorf("读取日志目录失败: %w", err)
 	}
 
-	// 按修改时间排序（最新的在前）
+	// 先按修改时间倒序收集（最新的在前）
 	var records []*DecisionRecord
 	count := 0
 	for i := len(files) - 1; i >= 0 && count < n; i-- {
@@ -138,6 +138,11 @@ func (l *DecisionLogger) GetLatestRecords(n int) ([]*DecisionRecord, error) {
 
 		records = append(records, &record)
 		count++
+	}
+
+	// 反转数组，让时间从旧到新排列（用于图表显示）
+	for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
+		records[i], records[j] = records[j], records[i]
 	}
 
 	return records, nil

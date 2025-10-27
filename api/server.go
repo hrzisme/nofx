@@ -136,8 +136,8 @@ func (s *Server) handlePositions(c *gin.Context) {
 
 // handleDecisions 决策日志列表
 func (s *Server) handleDecisions(c *gin.Context) {
-	// 获取最近30条记录
-	records, err := s.decisionLog.GetLatestRecords(30)
+	// 获取所有历史决策记录（无限制）
+	records, err := s.decisionLog.GetLatestRecords(10000)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取决策日志失败: %v", err),
@@ -187,8 +187,9 @@ func (s *Server) handleStatistics(c *gin.Context) {
 
 // handleEquityHistory 收益率历史数据
 func (s *Server) handleEquityHistory(c *gin.Context) {
-	// 获取最近30条决策记录
-	records, err := s.decisionLog.GetLatestRecords(30)
+	// 获取尽可能多的历史数据（几天的数据）
+	// 每3分钟一个周期：10000条 = 约20天的数据
+	records, err := s.decisionLog.GetLatestRecords(10000)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取历史数据失败: %v", err),
@@ -227,10 +228,10 @@ func (s *Server) Start() error {
 	log.Printf("  • GET  /api/status          - 系统状态")
 	log.Printf("  • GET  /api/account         - 账户信息")
 	log.Printf("  • GET  /api/positions       - 持仓列表")
-	log.Printf("  • GET  /api/decisions       - 决策日志（最近30条）")
+	log.Printf("  • GET  /api/decisions       - 决策日志（最多10000条）")
 	log.Printf("  • GET  /api/decisions/latest - 最新决策（最近5条）")
 	log.Printf("  • GET  /api/statistics      - 统计信息")
-	log.Printf("  • GET  /api/equity-history  - 收益率历史数据")
+	log.Printf("  • GET  /api/equity-history  - 收益率历史数据（最多10000条 ≈ 20天）")
 	log.Printf("  • GET  /health              - 健康检查")
 	log.Println()
 
