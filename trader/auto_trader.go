@@ -241,8 +241,17 @@ func (at *AutoTrader) runCycle() error {
 	}
 	log.Println()
 
-	// 7. 执行决策并记录结果
-	for _, d := range decision.Decisions {
+	// 7. 对决策排序：确保先平仓后开仓（防止仓位叠加超限）
+	sortedDecisions := sortDecisionsByPriority(decision.Decisions)
+
+	log.Println("🔄 执行顺序（已优化）: 先平仓→后开仓")
+	for i, d := range sortedDecisions {
+		log.Printf("  [%d] %s %s", i+1, d.Symbol, d.Action)
+	}
+	log.Println()
+
+	// 执行决策并记录结果
+	for _, d := range sortedDecisions {
 		actionRecord := logger.DecisionAction{
 			Action:    d.Action,
 			Symbol:    d.Symbol,
@@ -541,6 +550,16 @@ func (at *AutoTrader) executeCloseShort(decision *market.TradingDecision) error 
 func (at *AutoTrader) executeOpenLongWithRecord(decision *market.TradingDecision, actionRecord *logger.DecisionAction) error {
 	log.Printf("  📈 开多仓: %s", decision.Symbol)
 
+	// ⚠️ 关键：检查是否已有同币种同方向持仓，如果有则拒绝开仓（防止仓位叠加超限）
+	positions, err := at.trader.GetPositions()
+	if err == nil {
+		for _, pos := range positions {
+			if pos["symbol"] == decision.Symbol && pos["side"] == "long" {
+				return fmt.Errorf("❌ %s 已有多仓，拒绝开仓以防止仓位叠加超限。如需换仓，请先给出 close_long 决策", decision.Symbol)
+			}
+		}
+	}
+
 	// 获取当前价格
 	marketData, err := market.GetMarketData(decision.Symbol)
 	if err != nil {
@@ -579,6 +598,16 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *market.TradingDecision
 // executeOpenShortWithRecord 执行开空仓并记录详细信息
 func (at *AutoTrader) executeOpenShortWithRecord(decision *market.TradingDecision, actionRecord *logger.DecisionAction) error {
 	log.Printf("  📉 开空仓: %s", decision.Symbol)
+
+	// ⚠️ 关键：检查是否已有同币种同方向持仓，如果有则拒绝开仓（防止仓位叠加超限）
+	positions, err := at.trader.GetPositions()
+	if err == nil {
+		for _, pos := range positions {
+			if pos["symbol"] == decision.Symbol && pos["side"] == "short" {
+				return fmt.Errorf("❌ %s 已有空仓，拒绝开仓以防止仓位叠加超限。如需换仓，请先给出 close_short 决策", decision.Symbol)
+			}
+		}
+	}
 
 	// 获取当前价格
 	marketData, err := market.GetMarketData(decision.Symbol)
@@ -818,4 +847,41 @@ func (at *AutoTrader) GetPositions() ([]map[string]interface{}, error) {
 	}
 
 	return result, nil
+}
+
+// sortDecisionsByPriority 对决策排序：先平仓，再开仓，最后hold/wait
+// 这样可以避免换仓时仓位叠加超限
+func sortDecisionsByPriority(decisions []market.TradingDecision) []market.TradingDecision {
+	if len(decisions) <= 1 {
+		return decisions
+	}
+
+	// 定义优先级
+	getActionPriority := func(action string) int {
+		switch action {
+		case "close_long", "close_short":
+			return 1 // 最高优先级：先平仓
+		case "open_long", "open_short":
+			return 2 // 次优先级：后开仓
+		case "hold", "wait":
+			return 3 // 最低优先级：观望
+		default:
+			return 999 // 未知动作放最后
+		}
+	}
+
+	// 复制决策列表
+	sorted := make([]market.TradingDecision, len(decisions))
+	copy(sorted, decisions)
+
+	// 按优先级排序
+	for i := 0; i < len(sorted)-1; i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if getActionPriority(sorted[i].Action) > getActionPriority(sorted[j].Action) {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+
+	return sorted
 }
