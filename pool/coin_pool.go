@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
 )
@@ -16,7 +17,7 @@ type CoinPoolConfig struct {
 
 var coinPoolConfig = CoinPoolConfig{
 	APIURL:  "http://43.128.34.180:30006/api/ai500/list?auth=admin123sadasd3r323",
-	Timeout: 10 * time.Second,
+	Timeout: 30 * time.Second, // 增加到30秒
 }
 
 // CoinInfo 币种信息
@@ -46,8 +47,36 @@ func SetCoinPoolAPI(apiURL string) {
 	coinPoolConfig.APIURL = apiURL
 }
 
-// GetCoinPool 获取币种池列表
+// GetCoinPool 获取币种池列表（带重试机制）
 func GetCoinPool() ([]CoinInfo, error) {
+	maxRetries := 3
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			log.Printf("⚠️  第%d次重试获取币种池（共%d次）...", attempt, maxRetries)
+			time.Sleep(2 * time.Second) // 重试前等待2秒
+		}
+
+		coins, err := fetchCoinPool()
+		if err == nil {
+			if attempt > 1 {
+				log.Printf("✓ 第%d次重试成功", attempt)
+			}
+			return coins, nil
+		}
+
+		lastErr = err
+		log.Printf("❌ 第%d次请求失败: %v", attempt, err)
+	}
+
+	return nil, fmt.Errorf("获取币种池失败（重试%d次后）: %w", maxRetries, lastErr)
+}
+
+// fetchCoinPool 实际执行币种池请求
+func fetchCoinPool() ([]CoinInfo, error) {
+	log.Printf("🔄 正在请求AI500币种池...")
+
 	client := &http.Client{
 		Timeout: coinPoolConfig.Timeout,
 	}
@@ -87,6 +116,7 @@ func GetCoinPool() ([]CoinInfo, error) {
 		coins[i].IsAvailable = true
 	}
 
+	log.Printf("✓ 成功获取%d个币种", len(coins))
 	return coins, nil
 }
 
