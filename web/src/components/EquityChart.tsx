@@ -58,11 +58,18 @@ export function EquityChart() {
     );
   }
 
+  // 限制显示最近的数据点（性能优化）
+  // 如果数据超过2000个点，只显示最近2000个
+  const MAX_DISPLAY_POINTS = 2000;
+  const displayHistory = history.length > MAX_DISPLAY_POINTS
+    ? history.slice(-MAX_DISPLAY_POINTS)
+    : history;
+
   // 计算初始余额（使用第一个数据点）
   const initialBalance = history[0]?.total_equity || 1000;
 
   // 转换数据格式
-  const chartData = history.map((point) => {
+  const chartData = displayHistory.map((point) => {
     const pnl = point.total_equity - initialBalance;
     const pnlPct = ((pnl / initialBalance) * 100).toFixed(2);
     return {
@@ -80,6 +87,30 @@ export function EquityChart() {
 
   const currentValue = chartData[chartData.length - 1];
   const isProfit = currentValue.raw_pnl >= 0;
+
+  // 计算Y轴范围
+  const calculateYDomain = () => {
+    if (displayMode === 'percent') {
+      // 百分比模式：找到最大最小值，留20%余量
+      const values = chartData.map(d => d.value);
+      const minVal = Math.min(...values);
+      const maxVal = Math.max(...values);
+      const range = Math.max(Math.abs(maxVal), Math.abs(minVal));
+      const padding = Math.max(range * 0.2, 1); // 至少留1%余量
+      return [Math.floor(minVal - padding), Math.ceil(maxVal + padding)];
+    } else {
+      // 美元模式：以初始余额为基准，上下留10%余量
+      const values = chartData.map(d => d.value);
+      const minVal = Math.min(...values, initialBalance);
+      const maxVal = Math.max(...values, initialBalance);
+      const range = maxVal - minVal;
+      const padding = Math.max(range * 0.15, initialBalance * 0.01); // 至少留1%余量
+      return [
+        Math.floor(minVal - padding),
+        Math.ceil(maxVal + padding)
+      ];
+    }
+  };
 
   // 自定义Tooltip
   const CustomTooltip = ({ active, payload }: any) => {
@@ -154,8 +185,8 @@ export function EquityChart() {
       </div>
 
       {/* Chart */}
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+      <ResponsiveContainer width="100%" height={400}>
+        <LineChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 40 }}>
           <defs>
             <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#ededed" stopOpacity={0.9} />
@@ -166,14 +197,18 @@ export function EquityChart() {
           <XAxis
             dataKey="time"
             stroke="#71717a"
-            tick={{ fill: '#71717a', fontSize: 12 }}
+            tick={{ fill: '#71717a', fontSize: 11 }}
             tickLine={{ stroke: '#27272a' }}
+            interval={Math.floor(chartData.length / 10)}
+            angle={-15}
+            textAnchor="end"
+            height={60}
           />
           <YAxis
             stroke="#71717a"
             tick={{ fill: '#71717a', fontSize: 12 }}
             tickLine={{ stroke: '#27272a' }}
-            domain={displayMode === 'percent' ? ['auto', 'auto'] : undefined}
+            domain={calculateYDomain()}
             tickFormatter={(value) =>
               displayMode === 'dollar' ? `$${value.toFixed(0)}` : `${value}%`
             }
@@ -193,15 +228,15 @@ export function EquityChart() {
             type="monotone"
             dataKey="value"
             stroke="url(#colorGradient)"
-            strokeWidth={2}
-            dot={{ fill: '#ededed', r: 3 }}
-            activeDot={{ r: 5, fill: '#ffffff' }}
+            strokeWidth={3}
+            dot={chartData.length > 50 ? false : { fill: '#ededed', r: 4 }}
+            activeDot={{ r: 6, fill: '#ffffff' }}
           />
         </LineChart>
       </ResponsiveContainer>
 
       {/* Footer Stats */}
-      <div className="mt-4 grid grid-cols-3 gap-4 pt-4 border-t border-gray-800">
+      <div className="mt-4 grid grid-cols-4 gap-4 pt-4 border-t border-gray-800">
         <div>
           <div className="text-xs text-gray-400">初始余额</div>
           <div className="text-sm font-semibold mono">
@@ -215,8 +250,17 @@ export function EquityChart() {
           </div>
         </div>
         <div>
-          <div className="text-xs text-gray-400">数据点</div>
-          <div className="text-sm font-semibold mono">{history.length} 个周期</div>
+          <div className="text-xs text-gray-400">历史周期</div>
+          <div className="text-sm font-semibold mono">{history.length} 个</div>
+        </div>
+        <div>
+          <div className="text-xs text-gray-400">显示范围</div>
+          <div className="text-sm font-semibold mono">
+            {history.length > MAX_DISPLAY_POINTS
+              ? `最近 ${MAX_DISPLAY_POINTS}`
+              : '全部'
+            }
+          </div>
         </div>
       </div>
     </div>

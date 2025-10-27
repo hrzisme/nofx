@@ -18,9 +18,16 @@ export const api = {
 
   // 获取账户信息
   async getAccount(): Promise<AccountInfo> {
-    const res = await fetch(`${API_BASE}/account`);
+    const res = await fetch(`${API_BASE}/account`, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+      },
+    });
     if (!res.ok) throw new Error('获取账户信息失败');
-    return res.json();
+    const data = await res.json();
+    console.log('Account data fetched:', data);
+    return data;
   },
 
   // 获取持仓列表

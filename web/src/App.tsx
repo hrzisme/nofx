@@ -5,15 +5,23 @@ import { EquityChart } from './components/EquityChart';
 import type { SystemStatus, AccountInfo, Position, DecisionRecord, Statistics } from './types';
 
 function App() {
+  const [lastUpdate, setLastUpdate] = useState<string>('--:--:--');
+
   // 自动刷新数据（每5秒）
   const { data: status } = useSWR<SystemStatus>('status', api.getStatus, {
     refreshInterval: 5000,
+    revalidateOnFocus: true,
+    dedupingInterval: 0,
   });
   const { data: account } = useSWR<AccountInfo>('account', api.getAccount, {
     refreshInterval: 5000,
+    revalidateOnFocus: true,
+    dedupingInterval: 0,
   });
   const { data: positions } = useSWR<Position[]>('positions', api.getPositions, {
     refreshInterval: 5000,
+    revalidateOnFocus: true,
+    dedupingInterval: 0,
   });
   const { data: decisions } = useSWR<DecisionRecord[]>(
     'decisions/latest',
@@ -29,6 +37,21 @@ function App() {
       ? 'NOFX - Running'
       : 'NOFX - Stopped';
   }, [status?.is_running]);
+
+  // 调试：每次 account 数据更新时打印并记录时间
+  useEffect(() => {
+    if (account) {
+      const now = new Date().toLocaleTimeString();
+      setLastUpdate(now);
+      console.log('Account updated:', {
+        total_equity: account.total_equity,
+        available_balance: account.available_balance,
+        total_pnl: account.total_pnl,
+        total_pnl_pct: account.total_pnl_pct,
+        timestamp: now,
+      });
+    }
+  }, [account]);
 
   return (
     <div className="min-h-screen text-gray-100">
@@ -82,6 +105,18 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* Debug Info */}
+        {account && (
+          <div className="mb-4 p-3 bg-gray-900/30 border border-gray-800 rounded text-xs font-mono">
+            <div className="text-gray-400">
+              🔄 Last Update: {lastUpdate} |
+              Total Equity: {account.total_equity.toFixed(2)} |
+              Available: {account.available_balance.toFixed(2)} |
+              P&L: {account.total_pnl.toFixed(2)} ({account.total_pnl_pct.toFixed(2)}%)
+            </div>
+          </div>
+        )}
+
         {/* Account Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8 animate-fade-in">
           <StatCard
@@ -159,6 +194,7 @@ function App() {
                     <th className="pb-3 font-semibold text-gray-400">Entry Price</th>
                     <th className="pb-3 font-semibold text-gray-400">Mark Price</th>
                     <th className="pb-3 font-semibold text-gray-400">Quantity</th>
+                    <th className="pb-3 font-semibold text-gray-400">Position Value</th>
                     <th className="pb-3 font-semibold text-gray-400">Leverage</th>
                     <th className="pb-3 font-semibold text-gray-400">Unrealized P&L</th>
                     <th className="pb-3 font-semibold text-gray-400">Liq. Price</th>
@@ -182,6 +218,9 @@ function App() {
                       <td className="py-3 font-mono">{pos.entry_price.toFixed(4)}</td>
                       <td className="py-3 font-mono">{pos.mark_price.toFixed(4)}</td>
                       <td className="py-3 font-mono">{pos.quantity.toFixed(4)}</td>
+                      <td className="py-3 font-mono font-semibold text-white">
+                        {(pos.quantity * pos.mark_price).toFixed(2)} USDT
+                      </td>
                       <td className="py-3 font-mono">{pos.leverage}x</td>
                       <td className="py-3 font-mono">
                         <span
