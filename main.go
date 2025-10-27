@@ -20,12 +20,12 @@ func main() {
 	// ========== 配置区 ==========
 	config := trader.AutoTraderConfig{
 		// API密钥配置
-		BinanceAPIKey:    "YOUR_BINANCE_API_KEY",
-		BinanceSecretKey: "YOUR_BINANCE_SECRET_KEY",
+		BinanceAPIKey:    "7xPCTcqquHXdiVCCKvkC3Vx6AUObNmw6YvuYtCd6FGLvoA2erBf2IXu0yx8lXBq8",
+		BinanceSecretKey: "pEeN2Py0MgZoIowDe968pmQFYssnWXdywM5JoVUchVEYLH2ApPbAJUzLTeMZe1jL",
 		CoinPoolAPIURL:   "http://43.128.34.180:30006/api/ai500/list?auth=admin123sadasd3r323",
 
 		// AI配置
-		UseQwen:     true, // true=使用Qwen, false=使用DeepSeek
+		UseQwen:     false, // true=使用Qwen, false=使用DeepSeek
 		DeepSeekKey: "sk-44ac4e74ef184461800fccd15685ad30",
 		QwenKey:     "sk-c02cc4678f094a72b5513e92889eda04",
 

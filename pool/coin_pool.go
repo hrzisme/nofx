@@ -21,18 +21,24 @@ var coinPoolConfig = CoinPoolConfig{
 
 // CoinInfo 币种信息
 type CoinInfo struct {
-	Symbol      string  `json:"symbol"`       // 币种符号（例如：BTCUSDT）
-	Price       float64 `json:"price"`        // 当前价格
-	Volume24h   float64 `json:"volume_24h"`   // 24小时交易量
-	Change24h   float64 `json:"change_24h"`   // 24小时涨跌幅
-	IsAvailable bool    `json:"is_available"` // 是否可交易
+	Pair            string  `json:"pair"`             // 交易对符号（例如：BTCUSDT）
+	Score           float64 `json:"score"`            // 当前评分
+	StartTime       int64   `json:"start_time"`       // 开始时间（Unix时间戳）
+	StartPrice      float64 `json:"start_price"`      // 开始价格
+	LastScore       float64 `json:"last_score"`       // 最新评分
+	MaxScore        float64 `json:"max_score"`        // 最高评分
+	MaxPrice        float64 `json:"max_price"`        // 最高价格
+	IncreasePercent float64 `json:"increase_percent"` // 涨幅百分比
+	IsAvailable     bool    `json:"-"`                // 是否可交易（内部使用）
 }
 
-// CoinPoolResponse API响应结构
-type CoinPoolResponse struct {
-	Code    int        `json:"code"`
-	Message string     `json:"message"`
-	Data    []CoinInfo `json:"data"`
+// CoinPoolAPIResponse API返回的原始数据结构
+type CoinPoolAPIResponse struct {
+	Success bool `json:"success"`
+	Data    struct {
+		Coins []CoinInfo `json:"coins"`
+		Count int        `json:"count"`
+	} `json:"data"`
 }
 
 // SetCoinPoolAPI 设置币种池API
@@ -61,61 +67,27 @@ func GetCoinPool() ([]CoinInfo, error) {
 		return nil, fmt.Errorf("API返回错误 (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// 尝试多种解析方式
-	// 方式1: 标准响应格式
-	var poolResp CoinPoolResponse
-	if err := json.Unmarshal(body, &poolResp); err == nil {
-		if poolResp.Code == 0 || poolResp.Code == 200 {
-			return poolResp.Data, nil
-		}
+	// 解析API响应
+	var response CoinPoolAPIResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("JSON解析失败: %w", err)
 	}
 
-	// 方式2: 直接数组格式
-	var coins []CoinInfo
-	if err := json.Unmarshal(body, &coins); err == nil {
-		return coins, nil
+	if !response.Success {
+		return nil, fmt.Errorf("API返回失败状态")
 	}
 
-	// 方式3: 简单的字符串数组（symbol列表）
-	var symbols []string
-	if err := json.Unmarshal(body, &symbols); err == nil {
-		coins := make([]CoinInfo, len(symbols))
-		for i, symbol := range symbols {
-			coins[i] = CoinInfo{
-				Symbol:      symbol,
-				IsAvailable: true,
-			}
-		}
-		return coins, nil
+	if len(response.Data.Coins) == 0 {
+		return nil, fmt.Errorf("币种列表为空")
 	}
 
-	// 方式4: 对象格式 {"data": [...]}
-	var objResp struct {
-		Data interface{} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &objResp); err == nil && objResp.Data != nil {
-		// 将data转换为JSON再解析
-		dataJSON, _ := json.Marshal(objResp.Data)
-
-		// 尝试解析为CoinInfo数组
-		if err := json.Unmarshal(dataJSON, &coins); err == nil {
-			return coins, nil
-		}
-
-		// 尝试解析为字符串数组
-		if err := json.Unmarshal(dataJSON, &symbols); err == nil {
-			coins := make([]CoinInfo, len(symbols))
-			for i, symbol := range symbols {
-				coins[i] = CoinInfo{
-					Symbol:      symbol,
-					IsAvailable: true,
-				}
-			}
-			return coins, nil
-		}
+	// 设置IsAvailable标志
+	coins := response.Data.Coins
+	for i := range coins {
+		coins[i].IsAvailable = true
 	}
 
-	return nil, fmt.Errorf("无法解析API响应: %s", string(body))
+	return coins, nil
 }
 
 // GetAvailableCoins 获取可用的币种列表（过滤不可用的）
@@ -129,7 +101,7 @@ func GetAvailableCoins() ([]string, error) {
 	for _, coin := range coins {
 		if coin.IsAvailable {
 			// 确保symbol格式正确（转为大写USDT交易对）
-			symbol := normalizeSymbol(coin.Symbol)
+			symbol := normalizeSymbol(coin.Pair)
 			symbols = append(symbols, symbol)
 		}
 	}
