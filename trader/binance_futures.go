@@ -120,9 +120,9 @@ func (t *FuturesTrader) SetLeverage(symbol string, leverage int) error {
 
 	log.Printf("  ✓ %s 杠杆已切换为 %dx", symbol, leverage)
 
-	// 切换杠杆后等待2秒（避免冷却期错误）
-	log.Printf("  ⏱ 等待2秒冷却期...")
-	time.Sleep(2 * time.Second)
+	// 切换杠杆后等待5秒（避免冷却期错误）
+	log.Printf("  ⏱ 等待5秒冷却期...")
+	time.Sleep(5 * time.Second)
 
 	return nil
 }
@@ -137,12 +137,18 @@ func (t *FuturesTrader) SetMarginType(symbol string, marginType futures.MarginTy
 	if err != nil {
 		// 如果已经是该模式，不算错误
 		if contains(err.Error(), "No need to change") {
+			log.Printf("  ✓ %s 保证金模式已是 %s", symbol, marginType)
 			return nil
 		}
 		return fmt.Errorf("设置保证金模式失败: %w", err)
 	}
 
-	log.Printf("✓ %s 保证金模式设置为 %s", symbol, marginType)
+	log.Printf("  ✓ %s 保证金模式已切换为 %s", symbol, marginType)
+
+	// 切换保证金模式后等待3秒（避免冷却期错误）
+	log.Printf("  ⏱ 等待3秒冷却期...")
+	time.Sleep(3 * time.Second)
+
 	return nil
 }
 
