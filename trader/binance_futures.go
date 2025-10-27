@@ -154,6 +154,11 @@ func (t *FuturesTrader) SetMarginType(symbol string, marginType futures.MarginTy
 
 // OpenLong 开多仓
 func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
+	// 先取消该币种的所有委托单（清理旧的止损止盈单）
+	if err := t.CancelAllOrders(symbol); err != nil {
+		log.Printf("  ⚠ 取消旧委托单失败（可能没有委托单）: %v", err)
+	}
+
 	// 设置杠杆
 	if err := t.SetLeverage(symbol, leverage); err != nil {
 		return nil, err
@@ -195,6 +200,11 @@ func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) 
 
 // OpenShort 开空仓
 func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
+	// 先取消该币种的所有委托单（清理旧的止损止盈单）
+	if err := t.CancelAllOrders(symbol); err != nil {
+		log.Printf("  ⚠ 取消旧委托单失败（可能没有委托单）: %v", err)
+	}
+
 	// 设置杠杆
 	if err := t.SetLeverage(symbol, leverage); err != nil {
 		return nil, err
