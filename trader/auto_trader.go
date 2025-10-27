@@ -5,12 +5,11 @@ import (
 	"log"
 	"nofx/market"
 	"nofx/pool"
-	"nofx/scanner"
 	"strings"
 	"time"
 )
 
-// AutoTraderConfig 自动交易配置
+// AutoTraderConfig 自动交易配置（简化版 - AI全权决策）
 type AutoTraderConfig struct {
 	// API配置
 	BinanceAPIKey    string
@@ -22,22 +21,13 @@ type AutoTraderConfig struct {
 	DeepSeekKey string
 	QwenKey     string
 
-	// 交易配置
-	RiskPercentPerTrade float64 // 每笔交易风险百分比
-	MaxPositions        int     // 最大持仓数量
-	DefaultLeverage     int     // 默认杠杆倍数
-
 	// 扫描配置
-	ScanInterval  time.Duration // 扫描间隔
-	TopN          int           // 选择前N个机会
-	MinConfidence float64       // 最小信心度
-	MinPriority   int           // 最小优先级
-	MinRiskReward float64       // 最小风险回报比
+	ScanInterval time.Duration // 扫描间隔（建议3分钟）
 
-	// 风险控制
-	MaxDailyLoss    float64       // 最大日亏损百分比
-	MaxDrawdown     float64       // 最大回撤百分比
-	StopTradingTime time.Duration // 亏损后停止交易时长
+	// 风险控制（仅作为提示，AI可自主决定）
+	MaxDailyLoss    float64       // 最大日亏损百分比（提示）
+	MaxDrawdown     float64       // 最大回撤百分比（提示）
+	StopTradingTime time.Duration // 触发风控后暂停时长
 }
 
 // AutoTrader 自动交易器
@@ -49,6 +39,8 @@ type AutoTrader struct {
 	lastResetTime  time.Time
 	stopUntil      time.Time
 	isRunning      bool
+	startTime      time.Time // 系统启动时间
+	callCount      int       // AI调用次数
 }
 
 // NewAutoTrader 创建自动交易器
@@ -81,22 +73,13 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		initialBalance = avail
 	}
 
-	// 设置扫描配置
-	scanner.SetScanConfig(scanner.ScanConfig{
-		MinConfidence:      config.MinConfidence,
-		MaxConcurrent:      10,
-		Timeout:            60 * time.Second,
-		MinPriority:        config.MinPriority,
-		EnableLong:         true,
-		EnableShort:        true,
-		MinRiskRewardRatio: config.MinRiskReward,
-	})
-
 	return &AutoTrader{
 		config:         config,
 		trader:         trader,
 		initialBalance: initialBalance,
 		lastResetTime:  time.Now(),
+		startTime:      time.Now(),
+		callCount:      0,
 		isRunning:      false,
 	}, nil
 }
@@ -104,10 +87,10 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 // Run 运行自动交易主循环
 func (at *AutoTrader) Run() error {
 	at.isRunning = true
-	log.Println("🚀 自动交易系统启动")
+	log.Println("🚀 AI驱动自动交易系统启动")
 	log.Printf("💰 初始余额: %.2f USDT", at.initialBalance)
-	log.Printf("⚙️  配置: 风险 %.1f%%, 杠杆 %dx, 最大持仓 %d",
-		at.config.RiskPercentPerTrade, at.config.DefaultLeverage, at.config.MaxPositions)
+	log.Printf("⚙️  扫描间隔: %v", at.config.ScanInterval)
+	log.Println("🤖 AI将全权决定杠杆、仓位大小、止损止盈等参数")
 
 	ticker := time.NewTicker(at.config.ScanInterval)
 	defer ticker.Stop()
@@ -135,11 +118,13 @@ func (at *AutoTrader) Stop() {
 	log.Println("⏹ 自动交易系统停止")
 }
 
-// runCycle 运行一个交易周期
+// runCycle 运行一个交易周期（使用AI全权决策）
 func (at *AutoTrader) runCycle() error {
-	log.Printf("\n" + strings.Repeat("=", 60))
-	log.Printf("⏰ %s - 开始新的交易周期", time.Now().Format("2006-01-02 15:04:05"))
-	log.Printf(strings.Repeat("=", 60))
+	at.callCount++
+
+	log.Printf("\n" + strings.Repeat("=", 70))
+	log.Printf("⏰ %s - AI决策周期 #%d", time.Now().Format("2006-01-02 15:04:05"), at.callCount)
+	log.Printf(strings.Repeat("=", 70))
 
 	// 1. 检查是否需要停止交易
 	if time.Now().Before(at.stopUntil) {
@@ -155,246 +140,270 @@ func (at *AutoTrader) runCycle() error {
 		log.Println("📅 日盈亏已重置")
 	}
 
-	// 3. 检查现有持仓
-	if err := at.managePositions(); err != nil {
-		log.Printf("⚠ 管理持仓失败: %v", err)
-	}
-
-	// 4. 获取当前持仓数量
-	positions, err := at.trader.GetPositions()
+	// 3. 收集交易上下文
+	ctx, err := at.buildTradingContext()
 	if err != nil {
-		return fmt.Errorf("获取持仓失败: %w", err)
+		return fmt.Errorf("构建交易上下文失败: %w", err)
 	}
 
-	currentPositions := len(positions)
-	log.Printf("📊 当前持仓: %d/%d", currentPositions, at.config.MaxPositions)
+	log.Printf("📊 账户净值: %.2f USDT | 可用: %.2f USDT | 持仓: %d",
+		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
-	// 5. 如果已达到最大持仓，不再开新仓
-	if currentPositions >= at.config.MaxPositions {
-		log.Println("⚠ 已达最大持仓数量，跳过扫描")
-		return nil
-	}
-
-	// 6. 获取币种池
-	symbols, err := pool.GetAvailableCoins()
+	// 4. 调用AI获取完整决策
+	log.Println("🤖 正在请求AI分析并决策...")
+	decision, err := market.GetFullTradingDecision(ctx)
 	if err != nil {
-		return fmt.Errorf("获取币种池失败: %w", err)
+		return fmt.Errorf("获取AI决策失败: %w", err)
 	}
 
-	log.Printf("🎯 币种池: %d 个币种", len(symbols))
+	// 5. 打印AI思维链
+	log.Printf("\n" + strings.Repeat("-", 70))
+	log.Println("💭 AI思维链分析:")
+	log.Println(strings.Repeat("-", 70))
+	log.Println(decision.CoTTrace)
+	log.Printf(strings.Repeat("-", 70) + "\n")
 
-	// 7. 扫描市场机会
-	opportunities, err := scanner.ScanMarket(symbols)
-	if err != nil {
-		return fmt.Errorf("扫描市场失败: %w", err)
-	}
-
-	if len(opportunities) == 0 {
-		log.Println("😴 未找到合适的交易机会")
-		return nil
-	}
-
-	// 8. 选择前N个机会
-	topOpps := scanner.FilterTopN(opportunities, at.config.TopN)
-	log.Printf("\n📈 找到 %d 个高质量机会:", len(topOpps))
-	for i, opp := range topOpps {
-		scanner.PrintOpportunity(opp, i)
-	}
-
-	// 9. 执行交易
-	availableSlots := at.config.MaxPositions - currentPositions
-	for i, opp := range topOpps {
-		if i >= availableSlots {
-			break
+	// 6. 打印并执行AI决策
+	log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
+	for i, d := range decision.Decisions {
+		log.Printf("  [%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
+		if d.Action == "open_long" || d.Action == "open_short" {
+			log.Printf("      杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
+				d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
 		}
+	}
+	log.Println()
 
-		if err := at.executeOpportunity(opp); err != nil {
-			log.Printf("❌ 执行交易失败 %s: %v", opp.Symbol, err)
+	// 7. 执行决策
+	for _, d := range decision.Decisions {
+		if err := at.executeDecision(&d); err != nil {
+			log.Printf("❌ 执行决策失败 (%s %s): %v", d.Symbol, d.Action, err)
 		} else {
-			// 成功开仓后短暂延迟
-			time.Sleep(2 * time.Second)
+			// 成功执行后短暂延迟
+			time.Sleep(1 * time.Second)
 		}
 	}
 
 	return nil
 }
 
-// managePositions 管理现有持仓
-func (at *AutoTrader) managePositions() error {
+// buildTradingContext 构建交易上下文
+func (at *AutoTrader) buildTradingContext() (*market.TradingContext, error) {
+	// 1. 获取账户信息
+	balance, err := at.trader.GetBalance()
+	if err != nil {
+		return nil, fmt.Errorf("获取账户余额失败: %w", err)
+	}
+
+	totalEquity := 0.0
+	availableBalance := 0.0
+	if equity, ok := balance["totalWalletBalance"].(float64); ok {
+		totalEquity = equity
+	}
+	if avail, ok := balance["availableBalance"].(float64); ok {
+		availableBalance = avail
+	}
+
+	// 2. 获取持仓信息
 	positions, err := at.trader.GetPositions()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("获取持仓失败: %w", err)
 	}
 
-	if len(positions) == 0 {
-		return nil
-	}
-
-	log.Printf("\n💼 检查 %d 个持仓...", len(positions))
+	var positionInfos []market.PositionInfo
+	totalMarginUsed := 0.0
 
 	for _, pos := range positions {
 		symbol := pos["symbol"].(string)
 		side := pos["side"].(string)
 		entryPrice := pos["entryPrice"].(float64)
 		markPrice := pos["markPrice"].(float64)
+		quantity := pos["positionAmt"].(float64)
+		if quantity < 0 {
+			quantity = -quantity // 空仓数量为负，转为正数
+		}
 		unrealizedPnl := pos["unRealizedProfit"].(float64)
-		pnlPercent := 0.0
+		liquidationPrice := pos["liquidationPrice"].(float64)
+
+		// 计算盈亏百分比
+		pnlPct := 0.0
 		if side == "long" {
-			pnlPercent = ((markPrice - entryPrice) / entryPrice) * 100
+			pnlPct = ((markPrice - entryPrice) / entryPrice) * 100
 		} else {
-			pnlPercent = ((entryPrice - markPrice) / entryPrice) * 100
+			pnlPct = ((entryPrice - markPrice) / entryPrice) * 100
 		}
 
-		log.Printf("  %s %s: 入场 %.4f, 当前 %.4f, 盈亏 %.2f USDT (%.2f%%)",
-			symbol, side, entryPrice, markPrice, unrealizedPnl, pnlPercent)
-
-		// 检查是否需要平仓
-		shouldClose, reason, err := at.shouldClosePosition(symbol, side, entryPrice, markPrice)
-		if err != nil {
-			log.Printf("    ⚠ 检查平仓失败: %v", err)
-			continue
+		// 计算占用保证金（估算）
+		leverage := 10 // 默认值，实际应该从持仓信息获取
+		if lev, ok := pos["leverage"].(float64); ok {
+			leverage = int(lev)
 		}
+		marginUsed := (quantity * markPrice) / float64(leverage)
+		totalMarginUsed += marginUsed
 
-		if shouldClose {
-			log.Printf("    📌 平仓原因: %s", reason)
-			if err := at.closePosition(symbol, side); err != nil {
-				log.Printf("    ❌ 平仓失败: %v", err)
-			}
-		}
+		positionInfos = append(positionInfos, market.PositionInfo{
+			Symbol:           symbol,
+			Side:             side,
+			EntryPrice:       entryPrice,
+			MarkPrice:        markPrice,
+			Quantity:         quantity,
+			Leverage:         leverage,
+			UnrealizedPnL:    unrealizedPnl,
+			UnrealizedPnLPct: pnlPct,
+			LiquidationPrice: liquidationPrice,
+			MarginUsed:       marginUsed,
+		})
+	}
+
+	// 3. 获取候选币种池
+	candidateSymbols, err := pool.GetAvailableCoins()
+	if err != nil {
+		return nil, fmt.Errorf("获取币种池失败: %w", err)
+	}
+
+	var candidateCoins []market.CandidateCoin
+	for _, symbol := range candidateSymbols {
+		candidateCoins = append(candidateCoins, market.CandidateCoin{Symbol: symbol})
+	}
+
+	// 4. 计算总盈亏
+	totalPnL := totalEquity - at.initialBalance
+	totalPnLPct := 0.0
+	if at.initialBalance > 0 {
+		totalPnLPct = (totalPnL / at.initialBalance) * 100
+	}
+
+	marginUsedPct := 0.0
+	if totalEquity > 0 {
+		marginUsedPct = (totalMarginUsed / totalEquity) * 100
+	}
+
+	// 5. 构建上下文
+	ctx := &market.TradingContext{
+		CurrentTime:    time.Now().Format("2006-01-02 15:04:05"),
+		RuntimeMinutes: int(time.Since(at.startTime).Minutes()),
+		CallCount:      at.callCount,
+		Account: market.AccountInfo{
+			TotalEquity:      totalEquity,
+			AvailableBalance: availableBalance,
+			TotalPnL:         totalPnL,
+			TotalPnLPct:      totalPnLPct,
+			MarginUsed:       totalMarginUsed,
+			MarginUsedPct:    marginUsedPct,
+			PositionCount:    len(positionInfos),
+		},
+		Positions:      positionInfos,
+		CandidateCoins: candidateCoins,
+	}
+
+	return ctx, nil
+}
+
+// executeDecision 执行AI决策
+func (at *AutoTrader) executeDecision(decision *market.TradingDecision) error {
+	switch decision.Action {
+	case "open_long":
+		return at.executeOpenLong(decision)
+	case "open_short":
+		return at.executeOpenShort(decision)
+	case "close_long":
+		return at.executeCloseLong(decision)
+	case "close_short":
+		return at.executeCloseShort(decision)
+	case "hold", "wait":
+		// 无需执行，仅记录
+		return nil
+	default:
+		return fmt.Errorf("未知的action: %s", decision.Action)
+	}
+}
+
+// executeOpenLong 执行开多仓
+func (at *AutoTrader) executeOpenLong(decision *market.TradingDecision) error {
+	log.Printf("  📈 开多仓: %s", decision.Symbol)
+
+	// 获取当前价格
+	marketData, err := market.GetMarketData(decision.Symbol)
+	if err != nil {
+		return err
+	}
+
+	// 计算数量：仓位大小(USD) / 当前价格
+	quantity := decision.PositionSizeUSD / marketData.CurrentPrice
+
+	// 开仓
+	order, err := at.trader.OpenLong(decision.Symbol, quantity, decision.Leverage)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
+
+	// 设置止损止盈
+	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
+		log.Printf("  ⚠ 设置止损失败: %v", err)
+	}
+	if err := at.trader.SetTakeProfit(decision.Symbol, "LONG", quantity, decision.TakeProfit); err != nil {
+		log.Printf("  ⚠ 设置止盈失败: %v", err)
 	}
 
 	return nil
 }
 
-// shouldClosePosition 判断是否应该平仓
-func (at *AutoTrader) shouldClosePosition(symbol, side string, entryPrice, markPrice float64) (bool, string, error) {
-	// 获取市场数据和AI信号
-	_, err := market.GetMarketData(symbol)
-	if err != nil {
-		return false, "", err
-	}
+// executeOpenShort 执行开空仓
+func (at *AutoTrader) executeOpenShort(decision *market.TradingDecision) error {
+	log.Printf("  📉 开空仓: %s", decision.Symbol)
 
-	signal, err := market.GetAITradingSignal(symbol)
-	if err != nil {
-		return false, "", err
-	}
-
-	// 计算盈亏百分比
-	var pnlPercent float64
-	if side == "long" {
-		pnlPercent = ((markPrice - entryPrice) / entryPrice) * 100
-	} else {
-		pnlPercent = ((entryPrice - markPrice) / entryPrice) * 100
-	}
-
-	// 1. AI建议平仓
-	if side == "long" && (signal.Signal == market.SignalCloseLong || signal.Signal == market.SignalOpenShort) {
-		if signal.Confidence > 70 {
-			return true, fmt.Sprintf("AI强烈建议平多仓 (信心度: %.1f%%)", signal.Confidence), nil
-		}
-	}
-	if side == "short" && (signal.Signal == market.SignalCloseShort || signal.Signal == market.SignalOpenLong) {
-		if signal.Confidence > 70 {
-			return true, fmt.Sprintf("AI强烈建议平空仓 (信心度: %.1f%%)", signal.Confidence), nil
-		}
-	}
-
-	// 2. 止损检查
-	if side == "long" && markPrice <= signal.StopLoss {
-		return true, fmt.Sprintf("触发止损 (%.4f <= %.4f)", markPrice, signal.StopLoss), nil
-	}
-	if side == "short" && markPrice >= signal.StopLoss {
-		return true, fmt.Sprintf("触发止损 (%.4f >= %.4f)", markPrice, signal.StopLoss), nil
-	}
-
-	// 3. 止盈检查
-	if side == "long" && markPrice >= signal.TakeProfit {
-		return true, fmt.Sprintf("触发止盈 (%.4f >= %.4f)", markPrice, signal.TakeProfit), nil
-	}
-	if side == "short" && markPrice <= signal.TakeProfit {
-		return true, fmt.Sprintf("触发止盈 (%.4f <= %.4f)", markPrice, signal.TakeProfit), nil
-	}
-
-	// 4. 大额亏损强制平仓
-	if pnlPercent < -5.0 {
-		return true, fmt.Sprintf("大额亏损强制平仓 (%.2f%%)", pnlPercent), nil
-	}
-
-	return false, "", nil
-}
-
-// closePosition 平仓
-func (at *AutoTrader) closePosition(symbol, side string) error {
-	log.Printf("    🔄 正在平仓 %s %s...", symbol, side)
-
-	var err error
-	if side == "long" {
-		_, err = at.trader.CloseLong(symbol, 0) // 0 = 全部平仓
-	} else {
-		_, err = at.trader.CloseShort(symbol, 0)
-	}
-
+	// 获取当前价格
+	marketData, err := market.GetMarketData(decision.Symbol)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("    ✓ 平仓成功")
+	// 计算数量
+	quantity := decision.PositionSizeUSD / marketData.CurrentPrice
+
+	// 开仓
+	order, err := at.trader.OpenShort(decision.Symbol, quantity, decision.Leverage)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
+
+	// 设置止损止盈
+	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
+		log.Printf("  ⚠ 设置止损失败: %v", err)
+	}
+	if err := at.trader.SetTakeProfit(decision.Symbol, "SHORT", quantity, decision.TakeProfit); err != nil {
+		log.Printf("  ⚠ 设置止盈失败: %v", err)
+	}
+
 	return nil
 }
 
-// executeOpportunity 执行交易机会
-func (at *AutoTrader) executeOpportunity(opp *scanner.TradingOpportunity) error {
-	log.Printf("\n💫 正在执行交易: %s %s", opp.Symbol, scanner.GetSignalText(opp.Signal))
+// executeCloseLong 执行平多仓
+func (at *AutoTrader) executeCloseLong(decision *market.TradingDecision) error {
+	log.Printf("  🔄 平多仓: %s", decision.Symbol)
 
-	// 1. 获取当前余额
-	balance, err := at.trader.GetBalance()
+	_, err := at.trader.CloseLong(decision.Symbol, 0) // 0 = 全部平仓
 	if err != nil {
 		return err
 	}
 
-	freeBalance := 0.0
-	if avail, ok := balance["availableBalance"].(float64); ok {
-		freeBalance = avail
-	}
+	log.Printf("  ✓ 平仓成功")
+	return nil
+}
 
-	log.Printf("   可用余额: %.2f USDT", freeBalance)
+// executeCloseShort 执行平空仓
+func (at *AutoTrader) executeCloseShort(decision *market.TradingDecision) error {
+	log.Printf("  🔄 平空仓: %s", decision.Symbol)
 
-	// 2. 计算仓位大小
-	quantity := at.trader.CalculatePositionSize(
-		freeBalance,
-		at.config.RiskPercentPerTrade,
-		opp.CurrentPrice,
-		at.config.DefaultLeverage,
-	)
-
-	log.Printf("   开仓数量: %.4f (杠杆: %dx)", quantity, at.config.DefaultLeverage)
-
-	// 3. 执行开仓
-	var order map[string]interface{}
-	if opp.Signal == market.SignalOpenLong {
-		order, err = at.trader.OpenLong(opp.Symbol, quantity, at.config.DefaultLeverage)
-	} else if opp.Signal == market.SignalOpenShort {
-		order, err = at.trader.OpenShort(opp.Symbol, quantity, at.config.DefaultLeverage)
-	}
-
+	_, err := at.trader.CloseShort(decision.Symbol, 0) // 0 = 全部平仓
 	if err != nil {
 		return err
 	}
 
-	// 4. 设置止损止盈
-	positionSide := "LONG"
-	if opp.Signal == market.SignalOpenShort {
-		positionSide = "SHORT"
-	}
-
-	if err := at.trader.SetStopLoss(opp.Symbol, positionSide, quantity, opp.StopLoss); err != nil {
-		log.Printf("   ⚠ 设置止损失败: %v", err)
-	}
-
-	if err := at.trader.SetTakeProfit(opp.Symbol, positionSide, quantity, opp.TakeProfit); err != nil {
-		log.Printf("   ⚠ 设置止盈失败: %v", err)
-	}
-
-	log.Printf("   ✓ 交易执行成功，订单ID: %v", order["orderId"])
+	log.Printf("  ✓ 平仓成功")
 	return nil
 }

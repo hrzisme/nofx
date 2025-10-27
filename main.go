@@ -29,21 +29,12 @@ func main() {
 		DeepSeekKey: "sk-44ac4e74ef184461800fccd15685ad30",
 		QwenKey:     "sk-c02cc4678f094a72b5513e92889eda04",
 
-		// 交易配置
-		RiskPercentPerTrade: 2.0, // 每笔交易风险2%
-		MaxPositions:        3,   // 最多同时持有3个仓位
-		DefaultLeverage:     10,  // 默认10倍杠杆
-
 		// 扫描配置
-		ScanInterval:  5 * time.Minute, // 每5分钟扫描一次
-		TopN:          5,               // 选择前5个最佳机会
-		MinConfidence: 70.0,            // 最小信心度70%
-		MinPriority:   65,              // 最小优先级65分
-		MinRiskReward: 2.0,             // 最小风险回报比1:2
+		ScanInterval: 3 * time.Minute, // 每3分钟一次AI决策
 
-		// 风险控制
-		MaxDailyLoss:    5.0,              // 最大日亏损5%
-		MaxDrawdown:     10.0,             // 最大回撤10%
+		// 风险控制（仅作为提示，AI可自主决定）
+		MaxDailyLoss:    5.0,              // 最大日亏损5%（提示）
+		MaxDrawdown:     10.0,             // 最大回撤10%（提示）
 		StopTradingTime: 30 * time.Minute, // 触发风控后暂停30分钟
 	}
 	// =============================
@@ -59,19 +50,19 @@ func main() {
 		log.Fatalf("❌ 初始化失败: %v", err)
 	}
 
-	fmt.Println("✓ 自动交易器初始化成功")
+	fmt.Println("✓ AI驱动自动交易器初始化成功")
 	fmt.Println()
-	fmt.Println("📋 配置信息:")
+	fmt.Println("📋 系统配置:")
 	fmt.Printf("  • AI模型: %s\n", getAIName(config.UseQwen))
-	fmt.Printf("  • 扫描间隔: %v\n", config.ScanInterval)
-	fmt.Printf("  • 每笔风险: %.1f%%\n", config.RiskPercentPerTrade)
-	fmt.Printf("  • 默认杠杆: %dx\n", config.DefaultLeverage)
-	fmt.Printf("  • 最大持仓: %d\n", config.MaxPositions)
-	fmt.Printf("  • 最小信心度: %.0f%%\n", config.MinConfidence)
-	fmt.Printf("  • 最小优先级: %d\n", config.MinPriority)
-	fmt.Printf("  • 风险回报比: 1:%.1f\n", config.MinRiskReward)
+	fmt.Printf("  • 决策周期: %v (每3分钟)\n", config.ScanInterval)
 	fmt.Println()
-	fmt.Println("⚠️  风险提示: 自动交易有风险，请谨慎使用！")
+	fmt.Println("🤖 AI全权决策模式:")
+	fmt.Println("  • AI将自主决定每笔交易的杠杆倍数（1-20倍）")
+	fmt.Println("  • AI将自主决定每笔交易的仓位大小")
+	fmt.Println("  • AI将自主设置止损和止盈价格")
+	fmt.Println("  • AI将基于市场数据、技术指标、账户状态做出全面分析")
+	fmt.Println()
+	fmt.Println("⚠️  风险提示: AI自动交易有风险，建议小额资金测试！")
 	fmt.Println()
 	fmt.Println("按 Ctrl+C 停止运行")
 	fmt.Println(strings.Repeat("=", 60))
