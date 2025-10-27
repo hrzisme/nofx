@@ -119,20 +119,26 @@ func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) 
 		return nil, err
 	}
 
+	// 格式化数量到正确精度
+	quantityStr, err := t.FormatQuantity(symbol, quantity)
+	if err != nil {
+		return nil, err
+	}
+
 	// 创建市价买入订单
 	order, err := t.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(futures.SideTypeBuy).
 		PositionSide(futures.PositionSideTypeLong).
 		Type(futures.OrderTypeMarket).
-		Quantity(fmt.Sprintf("%.8f", quantity)).
+		Quantity(quantityStr).
 		Do(context.Background())
 
 	if err != nil {
 		return nil, fmt.Errorf("开多仓失败: %w", err)
 	}
 
-	log.Printf("✓ 开多仓成功: %s 数量: %.4f", symbol, quantity)
+	log.Printf("✓ 开多仓成功: %s 数量: %s", symbol, quantityStr)
 	log.Printf("  订单ID: %d", order.OrderID)
 
 	result := make(map[string]interface{})
@@ -154,20 +160,26 @@ func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int)
 		return nil, err
 	}
 
+	// 格式化数量到正确精度
+	quantityStr, err := t.FormatQuantity(symbol, quantity)
+	if err != nil {
+		return nil, err
+	}
+
 	// 创建市价卖出订单
 	order, err := t.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(futures.SideTypeSell).
 		PositionSide(futures.PositionSideTypeShort).
 		Type(futures.OrderTypeMarket).
-		Quantity(fmt.Sprintf("%.8f", quantity)).
+		Quantity(quantityStr).
 		Do(context.Background())
 
 	if err != nil {
 		return nil, fmt.Errorf("开空仓失败: %w", err)
 	}
 
-	log.Printf("✓ 开空仓成功: %s 数量: %.4f", symbol, quantity)
+	log.Printf("✓ 开空仓成功: %s 数量: %s", symbol, quantityStr)
 	log.Printf("  订单ID: %d", order.OrderID)
 
 	result := make(map[string]interface{})
@@ -198,13 +210,19 @@ func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]i
 		}
 	}
 
+	// 格式化数量
+	quantityStr, err := t.FormatQuantity(symbol, quantity)
+	if err != nil {
+		return nil, err
+	}
+
 	// 创建市价卖出订单（平多）
 	order, err := t.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(futures.SideTypeSell).
 		PositionSide(futures.PositionSideTypeLong).
 		Type(futures.OrderTypeMarket).
-		Quantity(fmt.Sprintf("%.8f", quantity)).
+		Quantity(quantityStr).
 		ReduceOnly(true).
 		Do(context.Background())
 
@@ -212,7 +230,7 @@ func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]i
 		return nil, fmt.Errorf("平多仓失败: %w", err)
 	}
 
-	log.Printf("✓ 平多仓成功: %s 数量: %.4f", symbol, quantity)
+	log.Printf("✓ 平多仓成功: %s 数量: %s", symbol, quantityStr)
 
 	result := make(map[string]interface{})
 	result["orderId"] = order.OrderID
@@ -242,13 +260,19 @@ func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]
 		}
 	}
 
+	// 格式化数量
+	quantityStr, err := t.FormatQuantity(symbol, quantity)
+	if err != nil {
+		return nil, err
+	}
+
 	// 创建市价买入订单（平空）
 	order, err := t.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(futures.SideTypeBuy).
 		PositionSide(futures.PositionSideTypeShort).
 		Type(futures.OrderTypeMarket).
-		Quantity(fmt.Sprintf("%.8f", quantity)).
+		Quantity(quantityStr).
 		ReduceOnly(true).
 		Do(context.Background())
 
@@ -256,7 +280,7 @@ func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]
 		return nil, fmt.Errorf("平空仓失败: %w", err)
 	}
 
-	log.Printf("✓ 平空仓成功: %s 数量: %.4f", symbol, quantity)
+	log.Printf("✓ 平空仓成功: %s 数量: %s", symbol, quantityStr)
 
 	result := make(map[string]interface{})
 	result["orderId"] = order.OrderID
@@ -305,13 +329,19 @@ func (t *FuturesTrader) SetStopLoss(symbol string, positionSide string, quantity
 		posSide = futures.PositionSideTypeShort
 	}
 
-	_, err := t.client.NewCreateOrderService().
+	// 格式化数量
+	quantityStr, err := t.FormatQuantity(symbol, quantity)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.OrderTypeStopMarket).
 		StopPrice(fmt.Sprintf("%.8f", stopPrice)).
-		Quantity(fmt.Sprintf("%.8f", quantity)).
+		Quantity(quantityStr).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClosePosition(true).
 		Do(context.Background())
@@ -337,13 +367,19 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 		posSide = futures.PositionSideTypeShort
 	}
 
-	_, err := t.client.NewCreateOrderService().
+	// 格式化数量
+	quantityStr, err := t.FormatQuantity(symbol, quantity)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.OrderTypeTakeProfitMarket).
 		StopPrice(fmt.Sprintf("%.8f", takeProfitPrice)).
-		Quantity(fmt.Sprintf("%.8f", quantity)).
+		Quantity(quantityStr).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClosePosition(true).
 		Do(context.Background())
@@ -354,6 +390,59 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 
 	log.Printf("  止盈价设置: %.4f", takeProfitPrice)
 	return nil
+}
+
+// GetSymbolPrecision 获取交易对的数量精度
+func (t *FuturesTrader) GetSymbolPrecision(symbol string) (int, error) {
+	exchangeInfo, err := t.client.NewExchangeInfoService().Do(context.Background())
+	if err != nil {
+		return 0, fmt.Errorf("获取交易规则失败: %w", err)
+	}
+
+	for _, s := range exchangeInfo.Symbols {
+		if s.Symbol == symbol {
+			// 从LOT_SIZE filter获取精度
+			for _, filter := range s.Filters {
+				if filter["filterType"] == "LOT_SIZE" {
+					stepSize := filter["stepSize"].(string)
+					// 计算小数位数
+					precision := 0
+					dotFound := false
+					for i := 0; i < len(stepSize); i++ {
+						if stepSize[i] == '.' {
+							dotFound = true
+							continue
+						}
+						if dotFound {
+							if stepSize[i] != '0' {
+								break
+							}
+							precision++
+						}
+					}
+					// 如果stepSize是1.0，则精度为0；如果是0.01，则精度为2
+					if stepSize[len(stepSize)-1] != '0' {
+						precision++
+					}
+					return precision, nil
+				}
+			}
+		}
+	}
+
+	return 3, nil // 默认精度为3
+}
+
+// FormatQuantity 格式化数量到正确的精度
+func (t *FuturesTrader) FormatQuantity(symbol string, quantity float64) (string, error) {
+	precision, err := t.GetSymbolPrecision(symbol)
+	if err != nil {
+		// 如果获取失败，使用默认格式
+		return fmt.Sprintf("%.3f", quantity), nil
+	}
+
+	format := fmt.Sprintf("%%.%df", precision)
+	return fmt.Sprintf(format, quantity), nil
 }
 
 // 辅助函数
