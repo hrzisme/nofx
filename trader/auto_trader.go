@@ -196,17 +196,32 @@ func (at *AutoTrader) runCycle() error {
 	// 4. 调用AI获取完整决策
 	log.Println("🤖 正在请求AI分析并决策...")
 	decision, err := market.GetFullTradingDecision(ctx)
+
+	// 即使有错误，也保存思维链和决策（用于debug）
+	if decision != nil {
+		record.CoTTrace = decision.CoTTrace
+		if len(decision.Decisions) > 0 {
+			decisionJSON, _ := json.MarshalIndent(decision.Decisions, "", "  ")
+			record.DecisionJSON = string(decisionJSON)
+		}
+	}
+
 	if err != nil {
 		record.Success = false
 		record.ErrorMessage = fmt.Sprintf("获取AI决策失败: %v", err)
+
+		// 打印AI思维链（即使有错误）
+		if decision != nil && decision.CoTTrace != "" {
+			log.Printf("\n" + strings.Repeat("-", 70))
+			log.Println("💭 AI思维链分析（错误情况）:")
+			log.Println(strings.Repeat("-", 70))
+			log.Println(decision.CoTTrace)
+			log.Printf(strings.Repeat("-", 70) + "\n")
+		}
+
 		at.decisionLogger.LogDecision(record)
 		return fmt.Errorf("获取AI决策失败: %w", err)
 	}
-
-	// 保存AI思维链和决策JSON
-	record.CoTTrace = decision.CoTTrace
-	decisionJSON, _ := json.MarshalIndent(decision.Decisions, "", "  ")
-	record.DecisionJSON = string(decisionJSON)
 
 	// 5. 打印AI思维链
 	log.Printf("\n" + strings.Repeat("-", 70))

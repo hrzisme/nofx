@@ -472,12 +472,20 @@ func parseFullDecisionResponse(aiResponse string, accountEquity float64) (*AIFul
 	// 2. 提取 JSON 决策列表
 	decisions, err := extractDecisions(aiResponse)
 	if err != nil {
-		return nil, fmt.Errorf("提取决策失败: %w", err)
+		// 即使JSON解析失败，也返回思维链
+		return &AIFullDecision{
+			CoTTrace:  cotTrace,
+			Decisions: []TradingDecision{},
+		}, fmt.Errorf("提取决策失败: %w\n\n=== AI思维链分析 ===\n%s", err, cotTrace)
 	}
 
 	// 3. 验证决策（包含仓位价值上限检查）
 	if err := validateDecisions(decisions, accountEquity); err != nil {
-		return nil, err
+		// 验证失败时，也返回思维链和决策，但标记为错误
+		return &AIFullDecision{
+			CoTTrace:  cotTrace,
+			Decisions: decisions,
+		}, fmt.Errorf("决策验证失败: %w\n\n=== AI思维链分析 ===\n%s", err, cotTrace)
 	}
 
 	return &AIFullDecision{
@@ -589,8 +597,9 @@ func validateDecision(d *TradingDecision, accountEquity float64) error {
 		if d.PositionSizeUSD <= 0 {
 			return fmt.Errorf("仓位大小必须大于0: %.2f", d.PositionSizeUSD)
 		}
-		// 验证仓位价值上限
-		if d.PositionSizeUSD > maxPositionValue {
+		// 验证仓位价值上限（加1%容差以避免浮点数精度问题）
+		tolerance := maxPositionValue * 0.01 // 1%容差
+		if d.PositionSizeUSD > maxPositionValue+tolerance {
 			if d.Symbol == "BTCUSDT" || d.Symbol == "ETHUSDT" {
 				return fmt.Errorf("BTC/ETH单币种仓位价值不能超过%.0f USDT（20倍账户净值），实际: %.0f", maxPositionValue, d.PositionSizeUSD)
 			} else {
