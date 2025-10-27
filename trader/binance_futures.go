@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/adshao/go-binance/v2/futures"
 )
@@ -80,18 +81,49 @@ func (t *FuturesTrader) GetPositions() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
-// SetLeverage 设置杠杆
+// SetLeverage 设置杠杆（智能判断+冷却期）
 func (t *FuturesTrader) SetLeverage(symbol string, leverage int) error {
-	_, err := t.client.NewChangeLeverageService().
+	// 先尝试获取当前杠杆（从持仓信息）
+	currentLeverage := 0
+	positions, err := t.GetPositions()
+	if err == nil {
+		for _, pos := range positions {
+			if pos["symbol"] == symbol {
+				if lev, ok := pos["leverage"].(float64); ok {
+					currentLeverage = int(lev)
+					break
+				}
+			}
+		}
+	}
+
+	// 如果当前杠杆已经是目标杠杆，跳过
+	if currentLeverage == leverage && currentLeverage > 0 {
+		log.Printf("  ✓ %s 杠杆已是 %dx，无需切换", symbol, leverage)
+		return nil
+	}
+
+	// 切换杠杆
+	_, err = t.client.NewChangeLeverageService().
 		Symbol(symbol).
 		Leverage(leverage).
 		Do(context.Background())
 
 	if err != nil {
+		// 如果错误信息包含"No need to change"，说明杠杆已经是目标值
+		if contains(err.Error(), "No need to change") {
+			log.Printf("  ✓ %s 杠杆已是 %dx", symbol, leverage)
+			return nil
+		}
 		return fmt.Errorf("设置杠杆失败: %w", err)
 	}
 
-	log.Printf("✓ %s 杠杆设置为 %dx", symbol, leverage)
+	log.Printf("  ✓ %s 杠杆已切换为 %dx", symbol, leverage)
+
+	// 切换杠杆后等待2秒（避免冷却期错误）
+	log.Printf("  ⏱ 等待2秒冷却期...")
+	time.Sleep(2 * time.Second)
+
 	return nil
 }
 
