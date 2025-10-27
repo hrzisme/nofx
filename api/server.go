@@ -148,7 +148,7 @@ func (s *Server) handleDecisions(c *gin.Context) {
 	c.JSON(http.StatusOK, records)
 }
 
-// handleLatestDecisions 最新决策日志（最近5条）
+// handleLatestDecisions 最新决策日志（最近5条，最新的在前）
 func (s *Server) handleLatestDecisions(c *gin.Context) {
 	records, err := s.decisionLog.GetLatestRecords(5)
 	if err != nil {
@@ -156,6 +156,12 @@ func (s *Server) handleLatestDecisions(c *gin.Context) {
 			"error": fmt.Sprintf("获取决策日志失败: %v", err),
 		})
 		return
+	}
+
+	// 反转数组，让最新的在前面（用于列表显示）
+	// GetLatestRecords返回的是从旧到新（用于图表），这里需要从新到旧
+	for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
+		records[i], records[j] = records[j], records[i]
 	}
 
 	c.JSON(http.StatusOK, records)
