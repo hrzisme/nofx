@@ -328,48 +328,29 @@ func (at *AutoTrader) buildTradingContext() (*market.TradingContext, error) {
 		})
 	}
 
-	// 3. 获取候选币种池（按AI500评分排序）
+	// 3. 获取合并的候选币种池（AI500 + OI Top，去重）
 	// 无论有没有持仓，都分析相同数量的币种（让AI看到所有好机会）
 	// AI会根据保证金使用率和现有持仓情况，自己决定是否要换仓
-	const topCoinLimit = 20 // 固定分析前20个评分最高的币种
+	const ai500Limit = 20 // AI500取前20个评分最高的币种
 
-	// 获取评分最高的N个币种（从AI500池子）
-	candidateSymbols, err := pool.GetTopRatedCoins(topCoinLimit)
+	// 获取合并后的币种池（AI500 + OI Top）
+	mergedPool, err := pool.GetMergedCoinPool(ai500Limit)
 	if err != nil {
-		return nil, fmt.Errorf("获取币种池失败: %w", err)
+		return nil, fmt.Errorf("获取合并币种池失败: %w", err)
 	}
 
-	log.Printf("📋 从AI500获取前%d个高评分币种用于分析（评分从高到低）", topCoinLimit)
-
-	// 主流币种默认加入池子（作为补充）
-	mainCoins := []string{
-		"BTCUSDT",
-		"ETHUSDT",
-		"SOLUSDT",
-		"BNBUSDT",
-		"XRPUSDT",
-		"DOGEUSDT",
-	}
-
-	// 使用map去重
-	symbolMap := make(map[string]bool)
-
-	// 先添加AI500评分最高的币种（优先级最高）
+	// 构建候选币种列表（包含来源信息）
 	var candidateCoins []market.CandidateCoin
-	for _, symbol := range candidateSymbols {
-		if !symbolMap[symbol] {
-			candidateCoins = append(candidateCoins, market.CandidateCoin{Symbol: symbol})
-			symbolMap[symbol] = true
-		}
+	for _, symbol := range mergedPool.AllSymbols {
+		sources := mergedPool.SymbolSources[symbol]
+		candidateCoins = append(candidateCoins, market.CandidateCoin{
+			Symbol:  symbol,
+			Sources: sources, // "ai500" 和/或 "oi_top"
+		})
 	}
 
-	// 再添加主流币种（如果还没有的话）
-	for _, symbol := range mainCoins {
-		if !symbolMap[symbol] {
-			candidateCoins = append(candidateCoins, market.CandidateCoin{Symbol: symbol})
-			symbolMap[symbol] = true
-		}
-	}
+	log.Printf("📋 合并币种池: AI500前%d + OI_Top20 = 总计%d个候选币种",
+		ai500Limit, len(candidateCoins))
 
 	// 4. 计算总盈亏
 	totalPnL := totalEquity - at.initialBalance

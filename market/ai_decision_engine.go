@@ -3,6 +3,7 @@ package market
 import (
 	"encoding/json"
 	"fmt"
+	"nofx/pool"
 	"strings"
 	"time"
 )
@@ -34,7 +35,18 @@ type AccountInfo struct {
 
 // CandidateCoin 候选币种（来自币种池）
 type CandidateCoin struct {
-	Symbol string `json:"symbol"`
+	Symbol  string   `json:"symbol"`
+	Sources []string `json:"sources"` // 来源: "ai500" 和/或 "oi_top"
+}
+
+// OITopData 持仓量增长Top数据（用于AI决策参考）
+type OITopData struct {
+	Rank              int     // OI Top排名
+	OIDeltaPercent    float64 // 持仓量变化百分比（1小时）
+	OIDeltaValue      float64 // 持仓量变化价值
+	PriceDeltaPercent float64 // 价格变化百分比
+	NetLong           float64 // 净多仓
+	NetShort          float64 // 净空仓
 }
 
 // TradingContext 交易上下文（传递给AI的完整信息）
@@ -46,6 +58,7 @@ type TradingContext struct {
 	Positions      []PositionInfo         `json:"positions"`
 	CandidateCoins []CandidateCoin        `json:"candidate_coins"`
 	MarketDataMap  map[string]*MarketData `json:"-"` // 不序列化，但内部使用
+	OITopDataMap   map[string]*OITopData  `json:"-"` // OI Top数据映射
 }
 
 // TradingDecision AI的交易决策
@@ -92,9 +105,10 @@ func GetFullTradingDecision(ctx *TradingContext) (*AIFullDecision, error) {
 	return decision, nil
 }
 
-// fetchMarketDataForContext 为上下文中的所有币种获取市场数据
+// fetchMarketDataForContext 为上下文中的所有币种获取市场数据和OI数据
 func fetchMarketDataForContext(ctx *TradingContext) error {
 	ctx.MarketDataMap = make(map[string]*MarketData)
+	ctx.OITopDataMap = make(map[string]*OITopData)
 
 	// 收集所有需要获取数据的币种
 	symbolSet := make(map[string]bool)
@@ -121,6 +135,23 @@ func fetchMarketDataForContext(ctx *TradingContext) error {
 			continue
 		}
 		ctx.MarketDataMap[symbol] = data
+	}
+
+	// 加载OI Top数据（不影响主流程）
+	oiPositions, err := pool.GetOITopPositions()
+	if err == nil {
+		for _, pos := range oiPositions {
+			// 标准化符号匹配
+			symbol := pos.Symbol
+			ctx.OITopDataMap[symbol] = &OITopData{
+				Rank:              pos.Rank,
+				OIDeltaPercent:    pos.OIDeltaPercent,
+				OIDeltaValue:      pos.OIDeltaValue,
+				PriceDeltaPercent: pos.PriceDeltaPercent,
+				NetLong:           pos.NetLong,
+				NetShort:          pos.NetShort,
+			}
+		}
 	}
 
 	return nil
@@ -191,8 +222,9 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	}
 
 	// 候选币种池 - 显示所有获取了市场数据的币种
-	sb.WriteString("## 🎯 候选币种池\n")
-	sb.WriteString(fmt.Sprintf("**总共 %d 个候选币种的市场数据**\n\n", len(ctx.MarketDataMap)))
+	sb.WriteString("## 🎯 候选币种池（AI500 + OI Top合并）\n")
+	sb.WriteString(fmt.Sprintf("**总共 %d 个候选币种的市场数据**\n", len(ctx.MarketDataMap)))
+	sb.WriteString("说明: [AI500]=AI评分高 | [OI_Top]=持仓量增长快 | [双标签]=两者都满足\n\n")
 
 	displayedCount := 0
 	for _, coin := range ctx.CandidateCoins {
@@ -202,8 +234,28 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 			continue
 		}
 		displayedCount++
-		sb.WriteString(fmt.Sprintf("\n### 币种 #%d: %s\n", displayedCount, coin.Symbol))
+
+		// 显示币种来源标签
+		sourceTags := ""
+		for _, source := range coin.Sources {
+			if source == "ai500" {
+				sourceTags += "[AI500] "
+			} else if source == "oi_top" {
+				sourceTags += "[OI_Top] "
+			}
+		}
+
+		sb.WriteString(fmt.Sprintf("\n### 币种 #%d: %s %s\n", displayedCount, coin.Symbol, sourceTags))
 		sb.WriteString(formatMarketDataBrief(marketData))
+
+		// 如果有OI Top数据，也显示出来
+		if oiTopData, hasOI := ctx.OITopDataMap[coin.Symbol]; hasOI {
+			sb.WriteString(fmt.Sprintf("**市场热度** (OI Top排名 #%d):\n", oiTopData.Rank))
+			sb.WriteString(fmt.Sprintf("  - 持仓量1h变化: %+.2f%% (价值: $%.0f)\n",
+				oiTopData.OIDeltaPercent, oiTopData.OIDeltaValue))
+			sb.WriteString(fmt.Sprintf("  - 价格1h变化: %+.2f%% | 净多仓: %.0f | 净空仓: %.0f\n",
+				oiTopData.PriceDeltaPercent, oiTopData.NetLong, oiTopData.NetShort))
+		}
 	}
 
 	// AI决策要求
@@ -216,7 +268,11 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("- 计算平仓后可释放的资金\n\n")
 	sb.WriteString("### 第二步：评估候选池中的新机会\n")
 	sb.WriteString(fmt.Sprintf("- 从上面 **%d 个候选币种**中找出技术形态最强的2-5个标的\n", len(ctx.MarketDataMap)))
-	sb.WriteString("- 综合评分：价格趋势、RSI、MACD、持仓量变化等\n")
+	sb.WriteString("- **综合评分维度**：\n")
+	sb.WriteString("  1. 技术指标：价格趋势、RSI、MACD\n")
+	sb.WriteString("  2. 市场热度：[OI_Top]标签的币种，持仓量增长说明资金流入\n")
+	sb.WriteString("  3. AI评分：[AI500]标签的币种，AI评分高\n")
+	sb.WriteString("  4. 双重信号：同时有[AI500]和[OI_Top]标签的，优先级最高\n")
 	sb.WriteString("- 标注每个强势币种的信号强度（强/中/弱）\n\n")
 	sb.WriteString("### 第三步：换仓机会评估（关键！）\n")
 	sb.WriteString("- **对比现有持仓 vs 新发现的强势币种**\n")
