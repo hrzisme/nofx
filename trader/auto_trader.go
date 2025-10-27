@@ -283,14 +283,23 @@ func (at *AutoTrader) buildTradingContext() (*market.TradingContext, error) {
 		return nil, fmt.Errorf("获取账户余额失败: %w", err)
 	}
 
-	totalEquity := 0.0
+	// 获取账户字段
+	totalWalletBalance := 0.0
+	totalUnrealizedProfit := 0.0
 	availableBalance := 0.0
-	if equity, ok := balance["totalWalletBalance"].(float64); ok {
-		totalEquity = equity
+
+	if wallet, ok := balance["totalWalletBalance"].(float64); ok {
+		totalWalletBalance = wallet
+	}
+	if unrealized, ok := balance["totalUnrealizedProfit"].(float64); ok {
+		totalUnrealizedProfit = unrealized
 	}
 	if avail, ok := balance["availableBalance"].(float64); ok {
 		availableBalance = avail
 	}
+
+	// Total Equity = 钱包余额 + 未实现盈亏
+	totalEquity := totalWalletBalance + totalUnrealizedProfit
 
 	// 2. 获取持仓信息
 	positions, err := at.trader.GetPositions()
@@ -685,14 +694,23 @@ func (at *AutoTrader) GetAccountInfo() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("获取余额失败: %w", err)
 	}
 
-	totalEquity := 0.0
+	// 获取账户字段
+	totalWalletBalance := 0.0
+	totalUnrealizedProfit := 0.0
 	availableBalance := 0.0
-	if equity, ok := balance["totalWalletBalance"].(float64); ok {
-		totalEquity = equity
+
+	if wallet, ok := balance["totalWalletBalance"].(float64); ok {
+		totalWalletBalance = wallet
+	}
+	if unrealized, ok := balance["totalUnrealizedProfit"].(float64); ok {
+		totalUnrealizedProfit = unrealized
 	}
 	if avail, ok := balance["availableBalance"].(float64); ok {
 		availableBalance = avail
 	}
+
+	// Total Equity = 钱包余额 + 未实现盈亏
+	totalEquity := totalWalletBalance + totalUnrealizedProfit
 
 	// 获取持仓计算总保证金
 	positions, err := at.trader.GetPositions()
@@ -731,16 +749,23 @@ func (at *AutoTrader) GetAccountInfo() (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"total_equity":         totalEquity,
-		"available_balance":    availableBalance,
-		"total_pnl":            totalPnL,
-		"total_pnl_pct":        totalPnLPct,
-		"total_unrealized_pnl": totalUnrealizedPnL,
-		"margin_used":          totalMarginUsed,
-		"margin_used_pct":      marginUsedPct,
-		"position_count":       len(positions),
-		"initial_balance":      at.initialBalance,
-		"daily_pnl":            at.dailyPnL,
+		// 核心字段
+		"total_equity":      totalEquity,           // 账户净值 = wallet + unrealized
+		"wallet_balance":    totalWalletBalance,    // 钱包余额（不含未实现盈亏）
+		"unrealized_profit": totalUnrealizedProfit, // 未实现盈亏（从API）
+		"available_balance": availableBalance,      // 可用余额
+
+		// 盈亏统计
+		"total_pnl":            totalPnL,           // 总盈亏 = equity - initial
+		"total_pnl_pct":        totalPnLPct,        // 总盈亏百分比
+		"total_unrealized_pnl": totalUnrealizedPnL, // 未实现盈亏（从持仓计算）
+		"initial_balance":      at.initialBalance,  // 初始余额
+		"daily_pnl":            at.dailyPnL,        // 日盈亏
+
+		// 持仓信息
+		"position_count":  len(positions),  // 持仓数量
+		"margin_used":     totalMarginUsed, // 保证金占用
+		"margin_used_pct": marginUsedPct,   // 保证金使用率
 	}, nil
 }
 

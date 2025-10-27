@@ -205,21 +205,48 @@ func (s *Server) handleEquityHistory(c *gin.Context) {
 
 	// 构建收益率历史数据点
 	type EquityPoint struct {
-		Timestamp   string  `json:"timestamp"`
-		TotalEquity float64 `json:"total_equity"`
-		PnL         float64 `json:"pnl"`
-		PnLPct      float64 `json:"pnl_pct"`
-		CycleNumber int     `json:"cycle_number"`
+		Timestamp        string  `json:"timestamp"`
+		TotalEquity      float64 `json:"total_equity"`      // 账户净值（wallet + unrealized）
+		AvailableBalance float64 `json:"available_balance"` // 可用余额
+		TotalPnL         float64 `json:"total_pnl"`         // 总盈亏（相对初始余额）
+		TotalPnLPct      float64 `json:"total_pnl_pct"`     // 总盈亏百分比
+		PositionCount    int     `json:"position_count"`    // 持仓数量
+		MarginUsedPct    float64 `json:"margin_used_pct"`   // 保证金使用率
+		CycleNumber      int     `json:"cycle_number"`
+	}
+
+	// 从第一条记录获取初始余额（用于计算盈亏百分比）
+	initialBalance := 1047.0 // 默认值，如果有记录则从AutoTrader获取
+	if at := s.autoTrader; at != nil {
+		if status := at.GetStatus(); status != nil {
+			if ib, ok := status["initial_balance"].(float64); ok {
+				initialBalance = ib
+			}
+		}
 	}
 
 	var history []EquityPoint
 	for _, record := range records {
+		// TotalBalance字段实际存储的是TotalEquity
+		totalEquity := record.AccountState.TotalBalance
+		// TotalUnrealizedProfit字段实际存储的是TotalPnL（相对初始余额）
+		totalPnL := record.AccountState.TotalUnrealizedProfit
+
+		// 计算盈亏百分比
+		totalPnLPct := 0.0
+		if initialBalance > 0 {
+			totalPnLPct = (totalPnL / initialBalance) * 100
+		}
+
 		history = append(history, EquityPoint{
-			Timestamp:   record.Timestamp.Format("2006-01-02 15:04:05"),
-			TotalEquity: record.AccountState.TotalBalance,
-			PnL:         record.AccountState.TotalUnrealizedProfit,
-			PnLPct:      0, // 需要从初始余额计算
-			CycleNumber: record.CycleNumber,
+			Timestamp:        record.Timestamp.Format("2006-01-02 15:04:05"),
+			TotalEquity:      totalEquity,
+			AvailableBalance: record.AccountState.AvailableBalance,
+			TotalPnL:         totalPnL,
+			TotalPnLPct:      totalPnLPct,
+			PositionCount:    record.AccountState.PositionCount,
+			MarginUsedPct:    record.AccountState.MarginUsedPct,
+			CycleNumber:      record.CycleNumber,
 		})
 	}
 
