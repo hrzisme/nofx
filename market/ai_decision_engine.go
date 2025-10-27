@@ -128,20 +128,11 @@ func fetchMarketDataForContext(ctx *TradingContext) error {
 
 // calculateMaxCandidates 根据账户状态计算需要分析的候选币种数量
 func calculateMaxCandidates(ctx *TradingContext) int {
-	// 如果有持仓，优先分析持仓，减少候选币种数量
-	if ctx.Account.PositionCount > 0 {
-		// 保证金使用率高时，只看少量新机会
-		if ctx.Account.MarginUsedPct > 70 {
-			return 3 // 高风险，只看3个
-		} else if ctx.Account.MarginUsedPct > 50 {
-			return 5 // 中等风险，看5个
-		} else {
-			return 8 // 低风险，看8个
-		}
-	}
-
-	// 无持仓时，可以看更多机会
-	return 15
+	// 直接返回候选池的全部币种数量
+	// 因为候选池已经在 auto_trader.go 中根据保证金使用率筛选过了
+	// 无持仓时：30个评分最高币种
+	// 有持仓时：15/25/35个评分最高币种（根据保证金使用率）
+	return len(ctx.CandidateCoins)
 }
 
 // buildFullDecisionPrompt 构建完整的AI决策提示
@@ -200,22 +191,21 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 		sb.WriteString("暂无持仓\n\n")
 	}
 
-	// 候选币种池
+	// 候选币种池 - 显示所有获取了市场数据的币种
 	sb.WriteString("## 🎯 候选币种池\n")
-	for i, coin := range ctx.CandidateCoins {
-		if i >= 10 { // 只显示前10个
-			sb.WriteString(fmt.Sprintf("...还有 %d 个币种\n", len(ctx.CandidateCoins)-10))
-			break
-		}
-		sb.WriteString(fmt.Sprintf("\n### 币种 #%d: %s\n", i+1, coin.Symbol))
+	sb.WriteString(fmt.Sprintf("**总共 %d 个候选币种的市场数据**\n\n", len(ctx.MarketDataMap)))
 
-		if marketData, ok := ctx.MarketDataMap[coin.Symbol]; ok {
-			sb.WriteString(formatMarketDataBrief(marketData))
-		} else {
-			sb.WriteString("市场数据获取中...\n")
+	displayedCount := 0
+	for _, coin := range ctx.CandidateCoins {
+		// 只显示已获取市场数据的币种
+		marketData, hasData := ctx.MarketDataMap[coin.Symbol]
+		if !hasData {
+			continue
 		}
+		displayedCount++
+		sb.WriteString(fmt.Sprintf("\n### 币种 #%d: %s\n", displayedCount, coin.Symbol))
+		sb.WriteString(formatMarketDataBrief(marketData))
 	}
-	sb.WriteString("\n")
 
 	// AI决策要求
 	sb.WriteString("## 🎯 你的任务\n\n")
@@ -234,7 +224,8 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("  - 可用余额至少15%以上即可考虑（激进策略）\n")
 	sb.WriteString("  - 保证金使用率在85%以下都可以开仓\n")
 	sb.WriteString("  - 发现高确定性机会时，大胆下单\n")
-	sb.WriteString("- 评估候选币种，优选技术形态最强的标的\n\n")
+	sb.WriteString(fmt.Sprintf("- 从上面 **%d 个候选币种**中评估，优选技术形态最强的标的\n", len(ctx.MarketDataMap)))
+	sb.WriteString("- 综合考虑价格趋势、RSI、MACD、持仓量等指标\n\n")
 
 	sb.WriteString("### 📋 决策原则（激进策略）\n")
 	sb.WriteString("1. **激进仓位**: 单笔仓位占账户净值的20-40%，把握高确定性机会时可达50%\n")

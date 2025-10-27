@@ -328,13 +328,36 @@ func (at *AutoTrader) buildTradingContext() (*market.TradingContext, error) {
 		})
 	}
 
-	// 3. 获取候选币种池
-	candidateSymbols, err := pool.GetAvailableCoins()
+	// 3. 获取候选币种池（按AI500评分排序）
+	// 根据持仓数量决定分析币种数量
+	var topCoinLimit int
+	if len(positionInfos) > 0 {
+		// 有持仓时根据保证金使用率决定
+		marginUsedPct := 0.0
+		if totalEquity > 0 {
+			marginUsedPct = (totalMarginUsed / totalEquity) * 100
+		}
+		if marginUsedPct > 70 {
+			topCoinLimit = 20 // 高保证金占用：前15个
+		} else if marginUsedPct > 50 {
+			topCoinLimit = 25 // 中等保证金占用：前25个
+		} else {
+			topCoinLimit = 35 // 低保证金占用：前35个
+		}
+	} else {
+		// 无持仓时，分析前30个评分最高的币种
+		topCoinLimit = 50
+	}
+
+	// 获取评分最高的N个币种（从AI500池子）
+	candidateSymbols, err := pool.GetTopRatedCoins(topCoinLimit)
 	if err != nil {
 		return nil, fmt.Errorf("获取币种池失败: %w", err)
 	}
 
-	// 主流币种默认加入池子
+	log.Printf("📋 从AI500获取前%d个高评分币种用于分析", topCoinLimit)
+
+	// 主流币种默认加入池子（作为补充）
 	mainCoins := []string{
 		"BTCUSDT",
 		"ETHUSDT",
@@ -347,17 +370,17 @@ func (at *AutoTrader) buildTradingContext() (*market.TradingContext, error) {
 	// 使用map去重
 	symbolMap := make(map[string]bool)
 
-	// 先添加主流币种
+	// 先添加AI500评分最高的币种（优先级最高）
 	var candidateCoins []market.CandidateCoin
-	for _, symbol := range mainCoins {
+	for _, symbol := range candidateSymbols {
 		if !symbolMap[symbol] {
 			candidateCoins = append(candidateCoins, market.CandidateCoin{Symbol: symbol})
 			symbolMap[symbol] = true
 		}
 	}
 
-	// 再添加池子中的其他币种
-	for _, symbol := range candidateSymbols {
+	// 再添加主流币种（如果还没有的话）
+	for _, symbol := range mainCoins {
 		if !symbolMap[symbol] {
 			candidateCoins = append(candidateCoins, market.CandidateCoin{Symbol: symbol})
 			symbolMap[symbol] = true

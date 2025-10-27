@@ -113,6 +113,49 @@ func GetAvailableCoins() ([]string, error) {
 	return symbols, nil
 }
 
+// GetTopRatedCoins 获取评分最高的N个币种（按评分从大到小排序）
+func GetTopRatedCoins(limit int) ([]string, error) {
+	coins, err := GetCoinPool()
+	if err != nil {
+		return nil, err
+	}
+
+	// 过滤可用的币种
+	var availableCoins []CoinInfo
+	for _, coin := range coins {
+		if coin.IsAvailable {
+			availableCoins = append(availableCoins, coin)
+		}
+	}
+
+	if len(availableCoins) == 0 {
+		return nil, fmt.Errorf("没有可用的币种")
+	}
+
+	// 按Score降序排序（冒泡排序）
+	for i := 0; i < len(availableCoins); i++ {
+		for j := i + 1; j < len(availableCoins); j++ {
+			if availableCoins[i].Score < availableCoins[j].Score {
+				availableCoins[i], availableCoins[j] = availableCoins[j], availableCoins[i]
+			}
+		}
+	}
+
+	// 取前N个
+	maxCount := limit
+	if len(availableCoins) < maxCount {
+		maxCount = len(availableCoins)
+	}
+
+	var symbols []string
+	for i := 0; i < maxCount; i++ {
+		symbol := normalizeSymbol(availableCoins[i].Pair)
+		symbols = append(symbols, symbol)
+	}
+
+	return symbols, nil
+}
+
 // normalizeSymbol 标准化币种符号
 func normalizeSymbol(symbol string) string {
 	// 移除空格
