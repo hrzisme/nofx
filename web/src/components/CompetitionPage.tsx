@@ -15,8 +15,23 @@ export function CompetitionPage() {
 
   if (!competition || !competition.traders) {
     return (
-      <div className="text-center py-12" style={{ color: '#848E9C' }}>
-        <div className="skeleton inline-block w-48 h-8 rounded"></div>
+      <div className="space-y-6">
+        <div className="binance-card p-8 animate-pulse">
+          <div className="flex items-center justify-between mb-6">
+            <div className="space-y-3 flex-1">
+              <div className="skeleton h-8 w-64"></div>
+              <div className="skeleton h-4 w-48"></div>
+            </div>
+            <div className="skeleton h-12 w-32"></div>
+          </div>
+        </div>
+        <div className="binance-card p-6">
+          <div className="skeleton h-6 w-40 mb-4"></div>
+          <div className="space-y-3">
+            <div className="skeleton h-20 w-full rounded"></div>
+            <div className="skeleton h-20 w-full rounded"></div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -30,9 +45,9 @@ export function CompetitionPage() {
   const leader = sortedTraders[0];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* Competition Header - Binance Style */}
-      <div className="rounded p-6" style={{ background: 'linear-gradient(135deg, rgba(240, 185, 11, 0.15) 0%, rgba(252, 213, 53, 0.05) 100%)', border: '1px solid rgba(240, 185, 11, 0.2)' }}>
+      <div className="rounded p-6 animate-scale-in" style={{ background: 'linear-gradient(135deg, rgba(240, 185, 11, 0.15) 0%, rgba(252, 213, 53, 0.05) 100%)', border: '1px solid rgba(240, 185, 11, 0.2)', boxShadow: '0 0 30px rgba(240, 185, 11, 0.15)' }}>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold mb-1 flex items-center gap-3" style={{ color: '#EAECEF' }}>
@@ -54,10 +69,15 @@ export function CompetitionPage() {
       </div>
 
       {/* Leader Board - Binance Style */}
-      <div className="binance-card p-5">
-        <h2 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: '#EAECEF' }}>
-          🥇 Leaderboard
-        </h2>
+      <div className="binance-card p-6 animate-slide-in" style={{ animationDelay: '0.1s' }}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: '#EAECEF' }}>
+            🥇 Leaderboard
+          </h2>
+          <div className="text-xs px-3 py-1 rounded" style={{ background: 'rgba(240, 185, 11, 0.1)', color: '#F0B90B', border: '1px solid rgba(240, 185, 11, 0.2)' }}>
+            LIVE
+          </div>
+        </div>
         <div className="space-y-3">
           {sortedTraders.map((trader, index) => {
             const isLeader = index === 0;
@@ -66,11 +86,11 @@ export function CompetitionPage() {
             return (
               <div
                 key={trader.trader_id}
-                className="rounded p-4"
+                className="rounded p-4 transition-all duration-300 hover:translate-y-[-2px]"
                 style={{
-                  background: '#0B0E11',
-                  border: `1px solid ${isLeader ? 'rgba(240, 185, 11, 0.3)' : '#2B3139'}`,
-                  boxShadow: isLeader ? '0 0 0 1px rgba(240, 185, 11, 0.1)' : 'none'
+                  background: isLeader ? 'linear-gradient(135deg, rgba(240, 185, 11, 0.08) 0%, #0B0E11 100%)' : '#0B0E11',
+                  border: `1px solid ${isLeader ? 'rgba(240, 185, 11, 0.4)' : '#2B3139'}`,
+                  boxShadow: isLeader ? '0 4px 20px rgba(240, 185, 11, 0.15), 0 0 0 1px rgba(240, 185, 11, 0.2)' : '0 2px 8px rgba(0, 0, 0, 0.3)'
                 }}
               >
                 <div className="flex items-center justify-between">
@@ -151,15 +171,24 @@ export function CompetitionPage() {
       </div>
 
       {/* Performance Comparison Chart */}
-      <div className="binance-card p-5">
-        <h2 className="text-lg font-bold mb-4" style={{ color: '#EAECEF' }}>📈 Performance Comparison</h2>
+      <div className="binance-card p-6 animate-slide-in" style={{ animationDelay: '0.2s' }}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: '#EAECEF' }}>
+            📈 Performance Comparison
+          </h2>
+          <div className="text-xs" style={{ color: '#848E9C' }}>
+            Real-time PnL % Chart
+          </div>
+        </div>
         <ComparisonChart traders={sortedTraders} />
       </div>
 
       {/* Head-to-Head Stats */}
       {competition.traders.length === 2 && (
-        <div className="binance-card p-5">
-          <h2 className="text-lg font-bold mb-4" style={{ color: '#EAECEF' }}>⚔️ Head-to-Head</h2>
+        <div className="binance-card p-6 animate-slide-in" style={{ animationDelay: '0.3s' }}>
+          <h2 className="text-xl font-bold mb-5 flex items-center gap-2" style={{ color: '#EAECEF' }}>
+            ⚔️ Head-to-Head Battle
+          </h2>
           <div className="grid grid-cols-2 gap-6">
             {sortedTraders.map((trader, index) => {
               const isWinning = index === 0;
@@ -169,10 +198,18 @@ export function CompetitionPage() {
               return (
                 <div
                   key={trader.trader_id}
-                  className="p-6 rounded"
+                  className="p-6 rounded transition-all duration-300 hover:scale-105"
                   style={isWinning
-                    ? { background: 'rgba(14, 203, 129, 0.05)', border: '1px solid rgba(14, 203, 129, 0.2)' }
-                    : { background: '#0B0E11', border: '1px solid #2B3139' }
+                    ? {
+                        background: 'linear-gradient(135deg, rgba(14, 203, 129, 0.08) 0%, rgba(14, 203, 129, 0.02) 100%)',
+                        border: '2px solid rgba(14, 203, 129, 0.3)',
+                        boxShadow: '0 4px 20px rgba(14, 203, 129, 0.15)'
+                      }
+                    : {
+                        background: '#0B0E11',
+                        border: '1px solid #2B3139',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
+                      }
                   }
                 >
                   <div className="text-center">

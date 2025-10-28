@@ -76,18 +76,19 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
 
   if (isLoading) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        <div className="animate-pulse">Loading comparison data...</div>
+      <div className="text-center py-16" style={{ color: '#848E9C' }}>
+        <div className="spinner mx-auto mb-4"></div>
+        <div className="text-sm font-semibold">Loading comparison data...</div>
       </div>
     );
   }
 
   if (combinedData.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        <div className="text-4xl mb-2">📊</div>
-        <div>暂无历史数据</div>
-        <div className="text-sm mt-1">运行几个周期后将显示对比曲线</div>
+      <div className="text-center py-16" style={{ color: '#848E9C' }}>
+        <div className="text-6xl mb-4 opacity-50">📊</div>
+        <div className="text-lg font-semibold mb-2">暂无历史数据</div>
+        <div className="text-sm">运行几个周期后将显示对比曲线</div>
       </div>
     );
   }
@@ -180,7 +181,8 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={500}>
+      <div style={{ borderRadius: '8px', overflow: 'hidden' }}>
+        <ResponsiveContainer width="100%" height={520}>
         <LineChart data={displayData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
           <defs>
             {traders.map((trader) => (
@@ -264,24 +266,27 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
           />
         </LineChart>
       </ResponsiveContainer>
+      </div>
 
       {/* Stats */}
-      <div className="mt-6 grid grid-cols-4 gap-4 pt-4 border-t border-gray-800">
-        <div>
-          <div className="text-xs text-gray-400">对比模式</div>
-          <div className="text-sm font-semibold">收益率百分比 (%)</div>
+      <div className="mt-6 grid grid-cols-4 gap-4 pt-5" style={{ borderTop: '1px solid #2B3139' }}>
+        <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>对比模式</div>
+          <div className="text-base font-bold" style={{ color: '#EAECEF' }}>PnL %</div>
         </div>
-        <div>
-          <div className="text-xs text-gray-400">数据点数</div>
-          <div className="text-sm font-semibold mono">{combinedData.length} 个周期</div>
+        <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>数据点数</div>
+          <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>{combinedData.length} 个</div>
         </div>
-        <div>
-          <div className="text-xs text-gray-400">当前差距</div>
-          <div className="text-sm font-semibold mono">{currentGap.toFixed(2)}%</div>
+        <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>当前差距</div>
+          <div className="text-base font-bold mono" style={{ color: currentGap > 1 ? '#F0B90B' : '#EAECEF' }}>
+            {currentGap.toFixed(2)}%
+          </div>
         </div>
-        <div>
-          <div className="text-xs text-gray-400">显示范围</div>
-          <div className="text-sm font-semibold mono">
+        <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>显示范围</div>
+          <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>
             {combinedData.length > MAX_DISPLAY_POINTS
               ? `最近 ${MAX_DISPLAY_POINTS}`
               : '全部数据'}

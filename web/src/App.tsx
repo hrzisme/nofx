@@ -225,14 +225,43 @@ function TraderDetailsPage({
   lastUpdate: string;
 }) {
   if (!selectedTrader) {
-    return <div className="text-center py-12 text-gray-500">Loading...</div>;
+    return (
+      <div className="space-y-6">
+        {/* Loading Skeleton - Binance Style */}
+        <div className="binance-card p-6 animate-pulse">
+          <div className="skeleton h-8 w-48 mb-3"></div>
+          <div className="flex gap-4">
+            <div className="skeleton h-4 w-32"></div>
+            <div className="skeleton h-4 w-24"></div>
+            <div className="skeleton h-4 w-28"></div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="binance-card p-5 animate-pulse">
+              <div className="skeleton h-4 w-24 mb-3"></div>
+              <div className="skeleton h-8 w-32"></div>
+            </div>
+          ))}
+        </div>
+        <div className="binance-card p-6 animate-pulse">
+          <div className="skeleton h-6 w-40 mb-4"></div>
+          <div className="skeleton h-64 w-full"></div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div>
       {/* Trader Header */}
-      <div className="mb-6 rounded p-5" style={{ background: 'linear-gradient(135deg, rgba(240, 185, 11, 0.15) 0%, rgba(252, 213, 53, 0.05) 100%)', border: '1px solid rgba(240, 185, 11, 0.2)' }}>
-        <h2 className="text-xl font-bold mb-2" style={{ color: '#EAECEF' }}>{selectedTrader.trader_name}</h2>
+      <div className="mb-6 rounded p-6 animate-scale-in" style={{ background: 'linear-gradient(135deg, rgba(240, 185, 11, 0.15) 0%, rgba(252, 213, 53, 0.05) 100%)', border: '1px solid rgba(240, 185, 11, 0.2)', boxShadow: '0 0 30px rgba(240, 185, 11, 0.15)' }}>
+        <h2 className="text-2xl font-bold mb-3 flex items-center gap-2" style={{ color: '#EAECEF' }}>
+          <span className="w-10 h-10 rounded-full flex items-center justify-center text-xl" style={{ background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)' }}>
+            🤖
+          </span>
+          {selectedTrader.trader_name}
+        </h2>
         <div className="flex items-center gap-4 text-sm" style={{ color: '#848E9C' }}>
           <span>AI Model: <span className="font-semibold" style={{ color: selectedTrader.ai_model === 'qwen' ? '#c084fc' : '#60a5fa' }}>{selectedTrader.ai_model.toUpperCase()}</span></span>
           {status && (
@@ -258,7 +287,7 @@ function TraderDetailsPage({
       )}
 
       {/* Account Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8 animate-fade-in">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <StatCard
           title="Total Equity"
           value={`${account?.total_equity.toFixed(2) || '0.00'} USDT`}
@@ -284,14 +313,16 @@ function TraderDetailsPage({
       </div>
 
       {/* Equity Chart */}
-      <div className="mb-8 animate-fade-in">
+      <div className="mb-8 animate-slide-in" style={{ animationDelay: '0.1s' }}>
         <EquityChart traderId={selectedTrader.trader_id} />
       </div>
 
       {/* Statistics */}
       {stats && (
-        <div className="binance-card p-5 mb-6">
-          <h2 className="text-lg font-bold mb-4" style={{ color: '#EAECEF' }}>Statistics</h2>
+        <div className="binance-card p-6 mb-6 animate-slide-in" style={{ animationDelay: '0.2s' }}>
+          <h2 className="text-xl font-bold mb-5 flex items-center gap-2" style={{ color: '#EAECEF' }}>
+            📊 Statistics
+          </h2>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
               <div className="text-xs" style={{ color: '#848E9C' }}>Total Cycles</div>
@@ -320,8 +351,17 @@ function TraderDetailsPage({
       )}
 
       {/* Positions */}
-      <div className="binance-card p-5 mb-6">
-        <h2 className="text-lg font-bold mb-4" style={{ color: '#EAECEF' }}>Current Positions</h2>
+      <div className="binance-card p-6 mb-6 animate-slide-in" style={{ animationDelay: '0.3s' }}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: '#EAECEF' }}>
+            📈 Current Positions
+          </h2>
+          {positions && positions.length > 0 && (
+            <div className="text-xs px-3 py-1 rounded" style={{ background: 'rgba(240, 185, 11, 0.1)', color: '#F0B90B', border: '1px solid rgba(240, 185, 11, 0.2)' }}>
+              {positions.length} Active
+            </div>
+          )}
+        </div>
         {positions && positions.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -377,13 +417,26 @@ function TraderDetailsPage({
             </table>
           </div>
         ) : (
-          <div className="text-center py-12 text-gray-500">No active positions</div>
+          <div className="text-center py-16" style={{ color: '#848E9C' }}>
+            <div className="text-6xl mb-4 opacity-50">📊</div>
+            <div className="text-lg font-semibold mb-2">无持仓</div>
+            <div className="text-sm">当前没有活跃的交易持仓</div>
+          </div>
         )}
       </div>
 
       {/* Recent Decisions */}
-      <div className="binance-card p-5">
-        <h2 className="text-lg font-bold mb-4" style={{ color: '#EAECEF' }}>Recent Decisions</h2>
+      <div className="binance-card p-6 animate-slide-in" style={{ animationDelay: '0.4s' }}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: '#EAECEF' }}>
+            🧠 Recent Decisions
+          </h2>
+          {decisions && decisions.length > 0 && (
+            <div className="text-xs px-3 py-1 rounded" style={{ background: 'rgba(240, 185, 11, 0.1)', color: '#F0B90B', border: '1px solid rgba(240, 185, 11, 0.2)' }}>
+              Last {decisions.length} Cycles
+            </div>
+          )}
+        </div>
         {decisions && decisions.length > 0 ? (
           <div className="space-y-4">
             {decisions.map((decision, i) => (
@@ -391,14 +444,18 @@ function TraderDetailsPage({
             ))}
           </div>
         ) : (
-          <div className="text-center py-12 text-gray-500">No decisions yet</div>
+          <div className="text-center py-16" style={{ color: '#848E9C' }}>
+            <div className="text-6xl mb-4 opacity-50">🧠</div>
+            <div className="text-lg font-semibold mb-2">暂无决策记录</div>
+            <div className="text-sm">AI交易决策将在这里显示</div>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-// Stat Card Component - Binance Style
+// Stat Card Component - Binance Style Enhanced
 function StatCard({
   title,
   value,
@@ -413,16 +470,18 @@ function StatCard({
   subtitle?: string;
 }) {
   return (
-    <div className="binance-card p-5">
+    <div className="stat-card animate-fade-in">
       <div className="text-xs mb-2 mono uppercase tracking-wider" style={{ color: '#848E9C' }}>{title}</div>
       <div className="text-2xl font-bold mb-1 mono" style={{ color: '#EAECEF' }}>{value}</div>
       {change !== undefined && (
-        <div
-          className="text-sm mono font-bold"
-          style={{ color: positive ? '#0ECB81' : '#F6465D' }}
-        >
-          {positive ? '+' : ''}
-          {change.toFixed(2)}%
+        <div className="flex items-center gap-1">
+          <div
+            className="text-sm mono font-bold"
+            style={{ color: positive ? '#0ECB81' : '#F6465D' }}
+          >
+            {positive ? '▲' : '▼'} {positive ? '+' : ''}
+            {change.toFixed(2)}%
+          </div>
         </div>
       )}
       {subtitle && <div className="text-xs mt-2 mono" style={{ color: '#848E9C' }}>{subtitle}</div>}
@@ -435,7 +494,7 @@ function DecisionCard({ decision }: { decision: DecisionRecord }) {
   const [showCoT, setShowCoT] = useState(false);
 
   return (
-    <div className="rounded p-4" style={{ border: '1px solid #2B3139', background: '#1E2329' }}>
+    <div className="rounded p-5 transition-all duration-300 hover:translate-y-[-2px]" style={{ border: '1px solid #2B3139', background: '#1E2329', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)' }}>
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div>

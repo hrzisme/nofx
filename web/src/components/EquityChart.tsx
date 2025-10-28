@@ -45,9 +45,13 @@ export function EquityChart({ traderId }: EquityChartProps) {
 
   if (error) {
     return (
-      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
-        <div className="text-red-400 text-sm">
-          ⚠️ 无法加载收益率数据: {error.message}
+      <div className="binance-card p-6">
+        <div className="flex items-center gap-3 p-4 rounded" style={{ background: 'rgba(246, 70, 93, 0.1)', border: '1px solid rgba(246, 70, 93, 0.2)' }}>
+          <div className="text-2xl">⚠️</div>
+          <div>
+            <div className="font-semibold" style={{ color: '#F6465D' }}>加载失败</div>
+            <div className="text-sm" style={{ color: '#848E9C' }}>{error.message}</div>
+          </div>
         </div>
       </div>
     );
@@ -55,12 +59,12 @@ export function EquityChart({ traderId }: EquityChartProps) {
 
   if (!history || history.length === 0) {
     return (
-      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
-        <h3 className="text-lg font-semibold mb-4">账户净值曲线</h3>
-        <div className="text-center py-12 text-gray-500">
-          <div className="text-4xl mb-2">📊</div>
-          <div>暂无历史数据</div>
-          <div className="text-sm mt-1">运行几个周期后将显示收益率曲线</div>
+      <div className="binance-card p-6">
+        <h3 className="text-lg font-semibold mb-6" style={{ color: '#EAECEF' }}>账户净值曲线</h3>
+        <div className="text-center py-16" style={{ color: '#848E9C' }}>
+          <div className="text-6xl mb-4 opacity-50">📊</div>
+          <div className="text-lg font-semibold mb-2">暂无历史数据</div>
+          <div className="text-sm">运行几个周期后将显示收益率曲线</div>
         </div>
       </div>
     );
@@ -145,53 +149,63 @@ export function EquityChart({ traderId }: EquityChartProps) {
   };
 
   return (
-    <div className="binance-card p-5">
+    <div className="binance-card p-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-base font-semibold mb-1" style={{ color: '#EAECEF' }}>账户净值曲线</h3>
-          <div className="flex items-baseline gap-3">
-            <span className="text-2xl font-bold mono" style={{ color: '#EAECEF' }}>
-              {account?.total_equity.toFixed(2) || '0.00'} USDT
+          <h3 className="text-lg font-bold mb-2" style={{ color: '#EAECEF' }}>账户净值曲线</h3>
+          <div className="flex items-baseline gap-4">
+            <span className="text-3xl font-bold mono" style={{ color: '#EAECEF' }}>
+              {account?.total_equity.toFixed(2) || '0.00'}
+              <span className="text-lg ml-1" style={{ color: '#848E9C' }}>USDT</span>
             </span>
-            <span
-              className="text-sm font-bold mono"
-              style={{ color: isProfit ? '#0ECB81' : '#F6465D' }}
-            >
-              {isProfit ? '+' : ''}
-              {currentValue.raw_pnl.toFixed(2)} USDT ({isProfit ? '+' : ''}
-              {currentValue.raw_pnl_pct}%)
-            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className="text-lg font-bold mono px-3 py-1 rounded"
+                style={{
+                  color: isProfit ? '#0ECB81' : '#F6465D',
+                  background: isProfit ? 'rgba(14, 203, 129, 0.1)' : 'rgba(246, 70, 93, 0.1)',
+                  border: `1px solid ${isProfit ? 'rgba(14, 203, 129, 0.2)' : 'rgba(246, 70, 93, 0.2)'}`
+                }}
+              >
+                {isProfit ? '▲' : '▼'} {isProfit ? '+' : ''}
+                {currentValue.raw_pnl_pct}%
+              </span>
+              <span className="text-sm mono" style={{ color: '#848E9C' }}>
+                ({isProfit ? '+' : ''}{currentValue.raw_pnl.toFixed(2)} USDT)
+              </span>
+            </div>
           </div>
         </div>
 
         {/* Display Mode Toggle */}
-        <div className="flex gap-1 rounded p-1" style={{ background: '#0B0E11' }}>
+        <div className="flex gap-1 rounded p-1" style={{ background: '#0B0E11', border: '1px solid #2B3139' }}>
           <button
             onClick={() => setDisplayMode('dollar')}
-            className="px-3 py-1.5 rounded text-sm font-semibold transition-all"
+            className="px-4 py-2 rounded text-sm font-bold transition-all"
             style={displayMode === 'dollar'
-              ? { background: '#F0B90B', color: '#000' }
+              ? { background: '#F0B90B', color: '#000', boxShadow: '0 2px 8px rgba(240, 185, 11, 0.4)' }
               : { background: 'transparent', color: '#848E9C' }
             }
           >
-            美元 ($)
+            💵 USDT
           </button>
           <button
             onClick={() => setDisplayMode('percent')}
-            className="px-3 py-1.5 rounded text-sm font-semibold transition-all"
+            className="px-4 py-2 rounded text-sm font-bold transition-all"
             style={displayMode === 'percent'
-              ? { background: '#F0B90B', color: '#000' }
+              ? { background: '#F0B90B', color: '#000', boxShadow: '0 2px 8px rgba(240, 185, 11, 0.4)' }
               : { background: 'transparent', color: '#848E9C' }
             }
           >
-            百分比 (%)
+            📊 %
           </button>
         </div>
       </div>
 
       {/* Chart */}
-      <ResponsiveContainer width="100%" height={400}>
+      <div className="my-2" style={{ borderRadius: '8px', overflow: 'hidden' }}>
+        <ResponsiveContainer width="100%" height={420}>
         <LineChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 40 }}>
           <defs>
             <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
@@ -240,31 +254,32 @@ export function EquityChart({ traderId }: EquityChartProps) {
           />
         </LineChart>
       </ResponsiveContainer>
+      </div>
 
       {/* Footer Stats */}
-      <div className="mt-4 grid grid-cols-4 gap-4 pt-4" style={{ borderTop: '1px solid #2B3139' }}>
-        <div>
-          <div className="text-xs" style={{ color: '#848E9C' }}>初始余额</div>
-          <div className="text-sm font-bold mono" style={{ color: '#EAECEF' }}>
+      <div className="mt-5 grid grid-cols-4 gap-4 pt-5" style={{ borderTop: '1px solid #2B3139' }}>
+        <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>初始余额</div>
+          <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>
             {initialBalance.toFixed(2)} USDT
           </div>
         </div>
-        <div>
-          <div className="text-xs" style={{ color: '#848E9C' }}>当前净值</div>
-          <div className="text-sm font-bold mono" style={{ color: '#EAECEF' }}>
+        <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>当前净值</div>
+          <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>
             {currentValue.raw_equity.toFixed(2)} USDT
           </div>
         </div>
-        <div>
-          <div className="text-xs" style={{ color: '#848E9C' }}>历史周期</div>
-          <div className="text-sm font-bold mono" style={{ color: '#EAECEF' }}>{history.length} 个</div>
+        <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>历史周期</div>
+          <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>{history.length} 个</div>
         </div>
-        <div>
-          <div className="text-xs" style={{ color: '#848E9C' }}>显示范围</div>
-          <div className="text-sm font-bold mono" style={{ color: '#EAECEF' }}>
+        <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>显示范围</div>
+          <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>
             {history.length > MAX_DISPLAY_POINTS
               ? `最近 ${MAX_DISPLAY_POINTS}`
-              : '全部'
+              : '全部数据'
             }
           </div>
         </div>
