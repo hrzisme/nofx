@@ -313,7 +313,8 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 
 	sb.WriteString("### 📤 输出格式\n\n")
 	sb.WriteString("**思维链分析** (纯文本)\n")
-	sb.WriteString("分析持仓 → 找新机会 → 决定开仓\n\n")
+	sb.WriteString("- 分析持仓 → 找新机会 → 账户检查\n")
+	sb.WriteString("- **最后必须列出最终决策摘要**（例如：持有XX，平仓XX，开多XX，开空XX）\n\n")
 	sb.WriteString("---\n\n")
 	sb.WriteString("**决策JSON** (不要用```标记)\n")
 	sb.WriteString("[\n")
@@ -324,26 +325,20 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("**开仓必填**: leverage, position_size_usd, stop_loss, take_profit\n")
 	sb.WriteString("**position_size_usd**: 仓位价值(非保证金)，保证金=position_size_usd/leverage\n\n")
 
-	sb.WriteString("### 📝 决策示例\n\n")
+	sb.WriteString("### 📝 完整示例\n\n")
 
 	// 简化示例仓位
 	btcSize := ctx.Account.TotalEquity * 18
-	altSize := ctx.Account.TotalEquity * 4.5
 
-	sb.WriteString("**场景1 - 多空混合**:\n")
+	sb.WriteString("**思维链**:\n")
+	sb.WriteString("当前持仓：ETHUSDT多头盈利+2.3%，趋势良好继续持有。\n")
+	sb.WriteString("新机会：BTC突破上涨，MACD金叉，资金费率低，做多信号强。\n")
+	sb.WriteString("账户：可用余额45%，保证金使用率38%，可开新仓。\n")
+	sb.WriteString("**最终决策**：持有ETHUSDT，开多BTCUSDT。\n\n")
+	sb.WriteString("---\n\n")
 	sb.WriteString("[\n")
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 92000, \"take_profit\": 98000, \"reasoning\": \"BTC多头\"},\n", btcSize))
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"SOLUSDT\", \"action\": \"open_short\", \"leverage\": 20, \"position_size_usd\": %.0f, \"stop_loss\": 130, \"take_profit\": 110, \"reasoning\": \"SOL空头\"}\n", altSize))
-	sb.WriteString("]\n\n")
-	sb.WriteString("**场景2 - 全做空**:\n")
-	sb.WriteString("[\n")
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 96000, \"take_profit\": 85000, \"reasoning\": \"BTC破位\"},\n", btcSize))
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"AVAXUSDT\", \"action\": \"open_short\", \"leverage\": 20, \"position_size_usd\": %.0f, \"stop_loss\": 32, \"take_profit\": 26, \"reasoning\": \"AVAX跟跌\"}\n", altSize))
-	sb.WriteString("]\n\n")
-	sb.WriteString("**场景3 - 全做多**:\n")
-	sb.WriteString("[\n")
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 92000, \"take_profit\": 105000, \"reasoning\": \"BTC突破\"},\n", btcSize))
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"ETHUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 3200, \"take_profit\": 3800, \"reasoning\": \"ETH跟涨\"}\n", btcSize))
+	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"hold\", \"reasoning\": \"盈利良好，趋势延续\"},\n")
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 92000, \"take_profit\": 98000, \"reasoning\": \"突破做多\"}\n", btcSize))
 	sb.WriteString("]\n\n")
 
 	sb.WriteString("现在请开始分析并给出你的决策！\n")
