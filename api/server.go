@@ -4,22 +4,20 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"nofx/logger"
-	"nofx/trader"
+	"nofx/manager"
 
 	"github.com/gin-gonic/gin"
 )
 
 // Server HTTP API服务器
 type Server struct {
-	router      *gin.Engine
-	autoTrader  *trader.AutoTrader
-	decisionLog *logger.DecisionLogger
-	port        int
+	router        *gin.Engine
+	traderManager *manager.TraderManager
+	port          int
 }
 
 // NewServer 创建API服务器
-func NewServer(autoTrader *trader.AutoTrader, decisionLog *logger.DecisionLogger, port int) *Server {
+func NewServer(traderManager *manager.TraderManager, port int) *Server {
 	// 设置为Release模式（减少日志输出）
 	gin.SetMode(gin.ReleaseMode)
 
@@ -29,10 +27,9 @@ func NewServer(autoTrader *trader.AutoTrader, decisionLog *logger.DecisionLogger
 	router.Use(corsMiddleware())
 
 	s := &Server{
-		router:      router,
-		autoTrader:  autoTrader,
-		decisionLog: decisionLog,
-		port:        port,
+		router:        router,
+		traderManager: traderManager,
+		port:          port,
 	}
 
 	// 设置路由
@@ -65,24 +62,19 @@ func (s *Server) setupRoutes() {
 	// API路由组
 	api := s.router.Group("/api")
 	{
-		// 系统状态
+		// 竞赛总览
+		api.GET("/competition", s.handleCompetition)
+
+		// Trader列表
+		api.GET("/traders", s.handleTraderList)
+
+		// 指定trader的数据（使用query参数 ?trader_id=xxx）
 		api.GET("/status", s.handleStatus)
-
-		// 账户信息
 		api.GET("/account", s.handleAccount)
-
-		// 持仓列表
 		api.GET("/positions", s.handlePositions)
-
-		// 决策日志
 		api.GET("/decisions", s.handleDecisions)
 		api.GET("/decisions/latest", s.handleLatestDecisions)
-		api.GET("/decisions/:filename", s.handleDecisionDetail)
-
-		// 统计信息
 		api.GET("/statistics", s.handleStatistics)
-
-		// 收益率历史数据
 		api.GET("/equity-history", s.handleEquityHistory)
 	}
 }
@@ -95,25 +87,92 @@ func (s *Server) handleHealth(c *gin.Context) {
 	})
 }
 
+// getTraderFromQuery 从query参数获取trader
+func (s *Server) getTraderFromQuery(c *gin.Context) (*manager.TraderManager, string, error) {
+	traderID := c.Query("trader_id")
+	if traderID == "" {
+		// 如果没有指定trader_id，返回第一个trader
+		ids := s.traderManager.GetTraderIDs()
+		if len(ids) == 0 {
+			return nil, "", fmt.Errorf("没有可用的trader")
+		}
+		traderID = ids[0]
+	}
+	return s.traderManager, traderID, nil
+}
+
+// handleCompetition 竞赛总览（对比所有trader）
+func (s *Server) handleCompetition(c *gin.Context) {
+	comparison, err := s.traderManager.GetComparisonData()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("获取对比数据失败: %v", err),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, comparison)
+}
+
+// handleTraderList trader列表
+func (s *Server) handleTraderList(c *gin.Context) {
+	traders := s.traderManager.GetAllTraders()
+	result := make([]map[string]interface{}, 0, len(traders))
+
+	for _, t := range traders {
+		result = append(result, map[string]interface{}{
+			"trader_id":   t.GetID(),
+			"trader_name": t.GetName(),
+			"ai_model":    t.GetAIModel(),
+		})
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
 // handleStatus 系统状态
 func (s *Server) handleStatus(c *gin.Context) {
-	status := s.autoTrader.GetStatus()
+	_, traderID, err := s.getTraderFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	status := trader.GetStatus()
 	c.JSON(http.StatusOK, status)
 }
 
 // handleAccount 账户信息
 func (s *Server) handleAccount(c *gin.Context) {
-	log.Printf("📊 收到账户信息请求")
-	account, err := s.autoTrader.GetAccountInfo()
+	_, traderID, err := s.getTraderFromQuery(c)
 	if err != nil {
-		log.Printf("❌ 获取账户信息失败: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("📊 收到账户信息请求 [%s]", trader.GetName())
+	account, err := trader.GetAccountInfo()
+	if err != nil {
+		log.Printf("❌ 获取账户信息失败 [%s]: %v", trader.GetName(), err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取账户信息失败: %v", err),
 		})
 		return
 	}
 
-	log.Printf("✓ 返回账户信息: 净值=%.2f, 可用=%.2f, 盈亏=%.2f (%.2f%%)",
+	log.Printf("✓ 返回账户信息 [%s]: 净值=%.2f, 可用=%.2f, 盈亏=%.2f (%.2f%%)",
+		trader.GetName(),
 		account["total_equity"],
 		account["available_balance"],
 		account["total_pnl"],
@@ -123,7 +182,19 @@ func (s *Server) handleAccount(c *gin.Context) {
 
 // handlePositions 持仓列表
 func (s *Server) handlePositions(c *gin.Context) {
-	positions, err := s.autoTrader.GetPositions()
+	_, traderID, err := s.getTraderFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	positions, err := trader.GetPositions()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取持仓列表失败: %v", err),
@@ -136,8 +207,20 @@ func (s *Server) handlePositions(c *gin.Context) {
 
 // handleDecisions 决策日志列表
 func (s *Server) handleDecisions(c *gin.Context) {
+	_, traderID, err := s.getTraderFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
 	// 获取所有历史决策记录（无限制）
-	records, err := s.decisionLog.GetLatestRecords(10000)
+	records, err := trader.GetDecisionLogger().GetLatestRecords(10000)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取决策日志失败: %v", err),
@@ -150,7 +233,19 @@ func (s *Server) handleDecisions(c *gin.Context) {
 
 // handleLatestDecisions 最新决策日志（最近5条，最新的在前）
 func (s *Server) handleLatestDecisions(c *gin.Context) {
-	records, err := s.decisionLog.GetLatestRecords(5)
+	_, traderID, err := s.getTraderFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	records, err := trader.GetDecisionLogger().GetLatestRecords(5)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取决策日志失败: %v", err),
@@ -167,20 +262,21 @@ func (s *Server) handleLatestDecisions(c *gin.Context) {
 	c.JSON(http.StatusOK, records)
 }
 
-// handleDecisionDetail 决策详情
-func (s *Server) handleDecisionDetail(c *gin.Context) {
-	filename := c.Param("filename")
-
-	// TODO: 实现根据文件名获取决策详情
-	c.JSON(http.StatusOK, gin.H{
-		"filename": filename,
-		"message":  "功能开发中",
-	})
-}
-
 // handleStatistics 统计信息
 func (s *Server) handleStatistics(c *gin.Context) {
-	stats, err := s.decisionLog.GetStatistics()
+	_, traderID, err := s.getTraderFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	stats, err := trader.GetDecisionLogger().GetStatistics()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取统计信息失败: %v", err),
@@ -193,9 +289,21 @@ func (s *Server) handleStatistics(c *gin.Context) {
 
 // handleEquityHistory 收益率历史数据
 func (s *Server) handleEquityHistory(c *gin.Context) {
+	_, traderID, err := s.getTraderFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
 	// 获取尽可能多的历史数据（几天的数据）
 	// 每3分钟一个周期：10000条 = 约20天的数据
-	records, err := s.decisionLog.GetLatestRecords(10000)
+	records, err := trader.GetDecisionLogger().GetLatestRecords(10000)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取历史数据失败: %v", err),
@@ -215,14 +323,26 @@ func (s *Server) handleEquityHistory(c *gin.Context) {
 		CycleNumber      int     `json:"cycle_number"`
 	}
 
-	// 从第一条记录获取初始余额（用于计算盈亏百分比）
-	initialBalance := 1047.0 // 默认值，如果有记录则从AutoTrader获取
-	if at := s.autoTrader; at != nil {
-		if status := at.GetStatus(); status != nil {
-			if ib, ok := status["initial_balance"].(float64); ok {
-				initialBalance = ib
-			}
+	// 从AutoTrader获取初始余额（用于计算盈亏百分比）
+	initialBalance := 0.0
+	if status := trader.GetStatus(); status != nil {
+		if ib, ok := status["initial_balance"].(float64); ok && ib > 0 {
+			initialBalance = ib
 		}
+	}
+
+	// 如果无法从status获取，且有历史记录，则从第一条记录获取
+	if initialBalance == 0 && len(records) > 0 {
+		// 第一条记录的equity作为初始余额
+		initialBalance = records[0].AccountState.TotalBalance
+	}
+
+	// 如果还是无法获取，返回错误
+	if initialBalance == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "无法获取初始余额",
+		})
+		return
 	}
 
 	var history []EquityPoint
@@ -258,14 +378,16 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.port)
 	log.Printf("🌐 API服务器启动在 http://localhost%s", addr)
 	log.Printf("📊 API文档:")
-	log.Printf("  • GET  /api/status          - 系统状态")
-	log.Printf("  • GET  /api/account         - 账户信息")
-	log.Printf("  • GET  /api/positions       - 持仓列表")
-	log.Printf("  • GET  /api/decisions       - 决策日志（最多10000条）")
-	log.Printf("  • GET  /api/decisions/latest - 最新决策（最近5条）")
-	log.Printf("  • GET  /api/statistics      - 统计信息")
-	log.Printf("  • GET  /api/equity-history  - 收益率历史数据（最多10000条 ≈ 20天）")
-	log.Printf("  • GET  /health              - 健康检查")
+	log.Printf("  • GET  /api/competition      - 竞赛总览（对比所有trader）")
+	log.Printf("  • GET  /api/traders          - Trader列表")
+	log.Printf("  • GET  /api/status?trader_id=xxx     - 指定trader的系统状态")
+	log.Printf("  • GET  /api/account?trader_id=xxx    - 指定trader的账户信息")
+	log.Printf("  • GET  /api/positions?trader_id=xxx  - 指定trader的持仓列表")
+	log.Printf("  • GET  /api/decisions?trader_id=xxx  - 指定trader的决策日志")
+	log.Printf("  • GET  /api/decisions/latest?trader_id=xxx - 指定trader的最新决策")
+	log.Printf("  • GET  /api/statistics?trader_id=xxx - 指定trader的统计信息")
+	log.Printf("  • GET  /api/equity-history?trader_id=xxx - 指定trader的收益率历史数据")
+	log.Printf("  • GET  /health               - 健康检查")
 	log.Println()
 
 	return s.router.Run(addr)

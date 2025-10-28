@@ -58,6 +58,11 @@ func SetCoinPoolAPI(apiURL string) {
 	coinPoolConfig.APIURL = apiURL
 }
 
+// SetOITopAPI 设置OI Top API
+func SetOITopAPI(apiURL string) {
+	oiTopConfig.APIURL = apiURL
+}
+
 // GetCoinPool 获取币种池列表（带重试和缓存机制）
 func GetCoinPool() ([]CoinInfo, error) {
 	maxRetries := 3

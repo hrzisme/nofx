@@ -13,6 +13,11 @@ import (
 
 // AutoTraderConfig 自动交易配置（简化版 - AI全权决策）
 type AutoTraderConfig struct {
+	// Trader标识
+	ID      string // Trader唯一标识（用于日志目录等）
+	Name    string // Trader显示名称
+	AIModel string // AI模型: "qwen" 或 "deepseek"
+
 	// API配置
 	BinanceAPIKey    string
 	BinanceSecretKey string
@@ -37,6 +42,9 @@ type AutoTraderConfig struct {
 
 // AutoTrader 自动交易器
 type AutoTrader struct {
+	id             string // Trader唯一标识
+	name           string // Trader显示名称
+	aiModel        string // AI模型名称
 	config         AutoTraderConfig
 	trader         *FuturesTrader
 	decisionLogger *logger.DecisionLogger // 决策日志记录器
@@ -51,13 +59,28 @@ type AutoTrader struct {
 
 // NewAutoTrader 创建自动交易器
 func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
+	// 设置默认值
+	if config.ID == "" {
+		config.ID = "default_trader"
+	}
+	if config.Name == "" {
+		config.Name = "Default Trader"
+	}
+	if config.AIModel == "" {
+		if config.UseQwen {
+			config.AIModel = "qwen"
+		} else {
+			config.AIModel = "deepseek"
+		}
+	}
+
 	// 初始化AI
 	if config.UseQwen {
 		market.SetQwenAPIKey(config.QwenKey, "")
-		log.Println("🤖 使用阿里云Qwen AI")
+		log.Printf("🤖 [%s] 使用阿里云Qwen AI", config.Name)
 	} else {
 		market.SetDeepSeekAPIKey(config.DeepSeekKey)
-		log.Println("🤖 使用DeepSeek AI")
+		log.Printf("🤖 [%s] 使用DeepSeek AI", config.Name)
 	}
 
 	// 初始化币种池API
@@ -73,10 +96,14 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		return nil, fmt.Errorf("初始金额必须大于0，请在配置中设置InitialBalance")
 	}
 
-	// 初始化决策日志记录器
-	decisionLogger := logger.NewDecisionLogger("decision_logs")
+	// 初始化决策日志记录器（使用trader ID创建独立目录）
+	logDir := fmt.Sprintf("decision_logs/%s", config.ID)
+	decisionLogger := logger.NewDecisionLogger(logDir)
 
 	return &AutoTrader{
+		id:             config.ID,
+		name:           config.Name,
+		aiModel:        config.AIModel,
 		config:         config,
 		trader:         trader,
 		decisionLogger: decisionLogger,
@@ -696,6 +723,26 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *market.TradingDecisi
 	return nil
 }
 
+// GetID 获取trader ID
+func (at *AutoTrader) GetID() string {
+	return at.id
+}
+
+// GetName 获取trader名称
+func (at *AutoTrader) GetName() string {
+	return at.name
+}
+
+// GetAIModel 获取AI模型
+func (at *AutoTrader) GetAIModel() string {
+	return at.aiModel
+}
+
+// GetDecisionLogger 获取决策日志记录器
+func (at *AutoTrader) GetDecisionLogger() *logger.DecisionLogger {
+	return at.decisionLogger
+}
+
 // GetStatus 获取系统状态（用于API）
 func (at *AutoTrader) GetStatus() map[string]interface{} {
 	aiProvider := "DeepSeek"
@@ -704,6 +751,9 @@ func (at *AutoTrader) GetStatus() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
+		"trader_id":       at.id,
+		"trader_name":     at.name,
+		"ai_model":        at.aiModel,
 		"is_running":      at.isRunning,
 		"start_time":      at.startTime.Format(time.RFC3339),
 		"runtime_minutes": int(time.Since(at.startTime).Minutes()),
