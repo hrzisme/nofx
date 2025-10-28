@@ -20,20 +20,28 @@ interface EquityPoint {
   cycle_number: number;
 }
 
-export function EquityChart() {
+interface EquityChartProps {
+  traderId?: string;
+}
+
+export function EquityChart({ traderId }: EquityChartProps) {
   const [displayMode, setDisplayMode] = useState<'dollar' | 'percent'>('dollar');
 
   const { data: history, error } = useSWR<EquityPoint[]>(
-    'equity-history',
-    api.getEquityHistory,
+    traderId ? `equity-history-${traderId}` : 'equity-history',
+    () => api.getEquityHistory(traderId),
     {
       refreshInterval: 10000, // 每10秒刷新
     }
   );
 
-  const { data: account } = useSWR('account', api.getAccount, {
-    refreshInterval: 5000,
-  });
+  const { data: account } = useSWR(
+    traderId ? `account-${traderId}` : 'account',
+    () => api.getAccount(traderId),
+    {
+      refreshInterval: 5000,
+    }
+  );
 
   if (error) {
     return (
