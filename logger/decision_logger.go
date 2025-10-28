@@ -264,3 +264,197 @@ type Statistics struct {
 	TotalOpenPositions  int `json:"total_open_positions"`
 	TotalClosePositions int `json:"total_close_positions"`
 }
+
+// TradeOutcome 单笔交易结果
+type TradeOutcome struct {
+	Symbol      string    // 币种
+	Side        string    // long/short
+	OpenPrice   float64   // 开仓价
+	ClosePrice  float64   // 平仓价
+	PnL         float64   // 盈亏（USDT）
+	PnLPct      float64   // 盈亏百分比
+	Duration    string    // 持仓时长
+	OpenTime    time.Time // 开仓时间
+	CloseTime   time.Time // 平仓时间
+	WasStopLoss bool      // 是否止损
+}
+
+// PerformanceAnalysis 交易表现分析
+type PerformanceAnalysis struct {
+	TotalTrades   int                           // 总交易数
+	WinningTrades int                           // 盈利交易数
+	LosingTrades  int                           // 亏损交易数
+	WinRate       float64                       // 胜率
+	AvgWin        float64                       // 平均盈利
+	AvgLoss       float64                       // 平均亏损
+	ProfitFactor  float64                       // 盈亏比
+	RecentTrades  []TradeOutcome                // 最近N笔交易
+	SymbolStats   map[string]*SymbolPerformance // 各币种表现
+	BestSymbol    string                        // 表现最好的币种
+	WorstSymbol   string                        // 表现最差的币种
+}
+
+// SymbolPerformance 币种表现统计
+type SymbolPerformance struct {
+	Symbol        string  // 币种
+	TotalTrades   int     // 交易次数
+	WinningTrades int     // 盈利次数
+	LosingTrades  int     // 亏损次数
+	WinRate       float64 // 胜率
+	TotalPnL      float64 // 总盈亏
+	AvgPnL        float64 // 平均盈亏
+}
+
+// AnalyzePerformance 分析最近N个周期的交易表现
+func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAnalysis, error) {
+	records, err := l.GetLatestRecords(lookbackCycles)
+	if err != nil {
+		return nil, fmt.Errorf("读取历史记录失败: %w", err)
+	}
+
+	if len(records) == 0 {
+		return &PerformanceAnalysis{
+			SymbolStats: make(map[string]*SymbolPerformance),
+		}, nil
+	}
+
+	analysis := &PerformanceAnalysis{
+		SymbolStats: make(map[string]*SymbolPerformance),
+	}
+
+	// 追踪持仓状态：symbol -> {side, openPrice, openTime}
+	openPositions := make(map[string]map[string]interface{})
+
+	// 遍历所有记录
+	for _, record := range records {
+		for _, action := range record.Decisions {
+			if !action.Success {
+				continue
+			}
+
+			symbol := action.Symbol
+			posKey := symbol // 使用symbol作为key（假设同一时间一个币种只有一个方向的仓位）
+
+			switch action.Action {
+			case "open_long", "open_short":
+				// 记录开仓
+				openPositions[posKey] = map[string]interface{}{
+					"side":      action.Action[5:], // "long" or "short"
+					"openPrice": action.Price,
+					"openTime":  action.Timestamp,
+				}
+
+			case "close_long", "close_short":
+				// 查找对应的开仓记录
+				if openPos, exists := openPositions[posKey]; exists {
+					openPrice := openPos["openPrice"].(float64)
+					openTime := openPos["openTime"].(time.Time)
+					side := openPos["side"].(string)
+
+					// 计算盈亏
+					pnl := 0.0
+					pnlPct := 0.0
+					if side == "long" {
+						pnlPct = ((action.Price - openPrice) / openPrice) * 100
+					} else {
+						pnlPct = ((openPrice - action.Price) / openPrice) * 100
+					}
+					pnl = pnlPct // 简化：用百分比代表盈亏
+
+					// 记录交易结果
+					outcome := TradeOutcome{
+						Symbol:     symbol,
+						Side:       side,
+						OpenPrice:  openPrice,
+						ClosePrice: action.Price,
+						PnL:        pnl,
+						PnLPct:     pnlPct,
+						Duration:   action.Timestamp.Sub(openTime).String(),
+						OpenTime:   openTime,
+						CloseTime:  action.Timestamp,
+					}
+
+					analysis.RecentTrades = append(analysis.RecentTrades, outcome)
+					analysis.TotalTrades++
+
+					if pnl > 0 {
+						analysis.WinningTrades++
+						analysis.AvgWin += pnl
+					} else {
+						analysis.LosingTrades++
+						analysis.AvgLoss += pnl
+					}
+
+					// 更新币种统计
+					if _, exists := analysis.SymbolStats[symbol]; !exists {
+						analysis.SymbolStats[symbol] = &SymbolPerformance{
+							Symbol: symbol,
+						}
+					}
+					stats := analysis.SymbolStats[symbol]
+					stats.TotalTrades++
+					stats.TotalPnL += pnl
+					if pnl > 0 {
+						stats.WinningTrades++
+					} else {
+						stats.LosingTrades++
+					}
+
+					// 移除已平仓记录
+					delete(openPositions, posKey)
+				}
+			}
+		}
+	}
+
+	// 计算统计指标
+	if analysis.TotalTrades > 0 {
+		analysis.WinRate = (float64(analysis.WinningTrades) / float64(analysis.TotalTrades)) * 100
+
+		if analysis.WinningTrades > 0 {
+			analysis.AvgWin /= float64(analysis.WinningTrades)
+		}
+		if analysis.LosingTrades > 0 {
+			analysis.AvgLoss /= float64(analysis.LosingTrades)
+		}
+
+		if analysis.AvgLoss != 0 {
+			analysis.ProfitFactor = analysis.AvgWin / (-analysis.AvgLoss)
+		}
+	}
+
+	// 计算各币种胜率和平均盈亏
+	bestPnL := -999999.0
+	worstPnL := 999999.0
+	for symbol, stats := range analysis.SymbolStats {
+		if stats.TotalTrades > 0 {
+			stats.WinRate = (float64(stats.WinningTrades) / float64(stats.TotalTrades)) * 100
+			stats.AvgPnL = stats.TotalPnL / float64(stats.TotalTrades)
+
+			if stats.TotalPnL > bestPnL {
+				bestPnL = stats.TotalPnL
+				analysis.BestSymbol = symbol
+			}
+			if stats.TotalPnL < worstPnL {
+				worstPnL = stats.TotalPnL
+				analysis.WorstSymbol = symbol
+			}
+		}
+	}
+
+	// 只保留最近的交易（倒序：最新的在前）
+	if len(analysis.RecentTrades) > 10 {
+		// 反转数组，让最新的在前
+		for i, j := 0, len(analysis.RecentTrades)-1; i < j; i, j = i+1, j-1 {
+			analysis.RecentTrades[i], analysis.RecentTrades[j] = analysis.RecentTrades[j], analysis.RecentTrades[i]
+		}
+		analysis.RecentTrades = analysis.RecentTrades[:10]
+	} else if len(analysis.RecentTrades) > 0 {
+		// 反转数组
+		for i, j := 0, len(analysis.RecentTrades)-1; i < j; i, j = i+1, j-1 {
+			analysis.RecentTrades[i], analysis.RecentTrades[j] = analysis.RecentTrades[j], analysis.RecentTrades[i]
+		}
+	}
+
+	return analysis, nil
+}

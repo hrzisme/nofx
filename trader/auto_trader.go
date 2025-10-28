@@ -424,7 +424,14 @@ func (at *AutoTrader) buildTradingContext() (*market.TradingContext, error) {
 		marginUsedPct = (totalMarginUsed / totalEquity) * 100
 	}
 
-	// 5. 构建上下文
+	// 5. 分析历史表现（最近20个周期）
+	performance, err := at.decisionLogger.AnalyzePerformance(20)
+	if err != nil {
+		log.Printf("⚠️  分析历史表现失败: %v", err)
+		// 不影响主流程，继续执行
+	}
+
+	// 6. 构建上下文
 	ctx := &market.TradingContext{
 		CurrentTime:    time.Now().Format("2006-01-02 15:04:05"),
 		RuntimeMinutes: int(time.Since(at.startTime).Minutes()),
@@ -440,6 +447,7 @@ func (at *AutoTrader) buildTradingContext() (*market.TradingContext, error) {
 		},
 		Positions:      positionInfos,
 		CandidateCoins: candidateCoins,
+		Performance:    performance, // 添加历史表现分析
 	}
 
 	return ctx, nil

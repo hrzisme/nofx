@@ -60,6 +60,7 @@ type TradingContext struct {
 	CandidateCoins []CandidateCoin        `json:"candidate_coins"`
 	MarketDataMap  map[string]*MarketData `json:"-"` // 不序列化，但内部使用
 	OITopDataMap   map[string]*OITopData  `json:"-"` // OI Top数据映射
+	Performance    interface{}            `json:"-"` // 历史表现分析（logger.PerformanceAnalysis）
 }
 
 // TradingDecision AI的交易决策
@@ -295,6 +296,11 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 		}
 	}
 
+	// 添加历史表现反馈（如果有）
+	if ctx.Performance != nil {
+		sb.WriteString(formatPerformanceFeedback(ctx.Performance))
+	}
+
 	// AI决策要求
 	sb.WriteString("## 🎯 任务\n\n")
 	sb.WriteString("分析市场数据，自主决策：\n")
@@ -342,6 +348,113 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 	sb.WriteString("]\n\n")
 
 	sb.WriteString("现在请开始分析并给出你的决策！\n")
+
+	return sb.String()
+}
+
+// formatPerformanceFeedback 格式化历史表现反馈
+func formatPerformanceFeedback(perfInterface interface{}) string {
+	// 类型断言（避免循环依赖，使用interface{}）
+	type TradeOutcome struct {
+		Symbol     string
+		Side       string
+		OpenPrice  float64
+		ClosePrice float64
+		PnL        float64
+		PnLPct     float64
+		Duration   string
+	}
+	type SymbolPerformance struct {
+		Symbol        string
+		TotalTrades   int
+		WinningTrades int
+		LosingTrades  int
+		WinRate       float64
+		TotalPnL      float64
+		AvgPnL        float64
+	}
+	type PerformanceAnalysis struct {
+		TotalTrades   int
+		WinningTrades int
+		LosingTrades  int
+		WinRate       float64
+		AvgWin        float64
+		AvgLoss       float64
+		ProfitFactor  float64
+		RecentTrades  []TradeOutcome
+		SymbolStats   map[string]*SymbolPerformance
+		BestSymbol    string
+		WorstSymbol   string
+	}
+
+	// 使用JSON转换进行类型转换（避免直接类型断言）
+	jsonData, _ := json.Marshal(perfInterface)
+	var perf PerformanceAnalysis
+	if err := json.Unmarshal(jsonData, &perf); err != nil {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("## 📊 历史表现反馈\n\n")
+
+	if perf.TotalTrades == 0 {
+		sb.WriteString("暂无历史交易数据\n\n")
+		return sb.String()
+	}
+
+	// 整体统计
+	sb.WriteString("### 整体表现\n")
+	sb.WriteString(fmt.Sprintf("- **总交易数**: %d 笔 (盈利: %d | 亏损: %d)\n",
+		perf.TotalTrades, perf.WinningTrades, perf.LosingTrades))
+	sb.WriteString(fmt.Sprintf("- **胜率**: %.1f%%\n", perf.WinRate))
+	sb.WriteString(fmt.Sprintf("- **平均盈利**: +%.2f%% | 平均亏损: %.2f%%\n",
+		perf.AvgWin, perf.AvgLoss))
+	if perf.ProfitFactor > 0 {
+		sb.WriteString(fmt.Sprintf("- **盈亏比**: %.2f:1\n", perf.ProfitFactor))
+	}
+	sb.WriteString("\n")
+
+	// 最近交易
+	if len(perf.RecentTrades) > 0 {
+		sb.WriteString("### 最近交易\n")
+		displayCount := len(perf.RecentTrades)
+		if displayCount > 5 {
+			displayCount = 5
+		}
+		for i := 0; i < displayCount; i++ {
+			trade := perf.RecentTrades[i]
+			outcome := "✓"
+			if trade.PnL < 0 {
+				outcome = "✗"
+			}
+			sb.WriteString(fmt.Sprintf("%d. %s %s: %.4f → %.4f = %+.2f%% %s\n",
+				i+1, trade.Symbol, strings.ToUpper(trade.Side),
+				trade.OpenPrice, trade.ClosePrice,
+				trade.PnLPct, outcome))
+		}
+		sb.WriteString("\n")
+	}
+
+	// 币种表现（显示前3个最好和最差）
+	if len(perf.SymbolStats) > 0 {
+		sb.WriteString("### 币种表现\n")
+
+		if perf.BestSymbol != "" {
+			if stats, exists := perf.SymbolStats[perf.BestSymbol]; exists {
+				sb.WriteString(fmt.Sprintf("- **最佳**: %s (胜率%.0f%%, 平均%+.2f%%)\n",
+					stats.Symbol, stats.WinRate, stats.AvgPnL))
+			}
+		}
+
+		if perf.WorstSymbol != "" {
+			if stats, exists := perf.SymbolStats[perf.WorstSymbol]; exists {
+				sb.WriteString(fmt.Sprintf("- **最差**: %s (胜率%.0f%%, 平均%+.2f%%)\n",
+					stats.Symbol, stats.WinRate, stats.AvgPnL))
+			}
+		}
+		sb.WriteString("\n")
+	}
 
 	return sb.String()
 }
