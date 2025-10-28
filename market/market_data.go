@@ -14,6 +14,8 @@ import (
 type MarketData struct {
 	Symbol            string
 	CurrentPrice      float64
+	PriceChange1h     float64 // 1小时价格变化百分比
+	PriceChange4h     float64 // 4小时价格变化百分比
 	CurrentEMA20      float64
 	CurrentMACD       float64
 	CurrentRSI7       float64
@@ -84,6 +86,25 @@ func GetMarketData(symbol string) (*MarketData, error) {
 	currentMACD := calculateMACD(klines3m)
 	currentRSI7 := calculateRSI(klines3m, 7)
 
+	// 计算价格变化百分比
+	// 1小时价格变化 = 20个3分钟K线前的价格
+	priceChange1h := 0.0
+	if len(klines3m) >= 21 { // 至少需要21根K线 (当前 + 20根前)
+		price1hAgo := klines3m[len(klines3m)-21].Close
+		if price1hAgo > 0 {
+			priceChange1h = ((currentPrice - price1hAgo) / price1hAgo) * 100
+		}
+	}
+
+	// 4小时价格变化 = 1个4小时K线前的价格
+	priceChange4h := 0.0
+	if len(klines4h) >= 2 {
+		price4hAgo := klines4h[len(klines4h)-2].Close
+		if price4hAgo > 0 {
+			priceChange4h = ((currentPrice - price4hAgo) / price4hAgo) * 100
+		}
+	}
+
 	// 获取OI数据
 	oiData, err := getOpenInterestData(symbol)
 	if err != nil {
@@ -103,6 +124,8 @@ func GetMarketData(symbol string) (*MarketData, error) {
 	return &MarketData{
 		Symbol:            symbol,
 		CurrentPrice:      currentPrice,
+		PriceChange1h:     priceChange1h,
+		PriceChange4h:     priceChange4h,
 		CurrentEMA20:      currentEMA20,
 		CurrentMACD:       currentMACD,
 		CurrentRSI7:       currentRSI7,

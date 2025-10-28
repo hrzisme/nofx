@@ -3,6 +3,7 @@ package market
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"nofx/pool"
 	"strings"
 	"time"
@@ -128,12 +129,34 @@ func fetchMarketDataForContext(ctx *TradingContext) error {
 	}
 
 	// 并发获取市场数据
+	// 持仓币种集合（用于判断是否跳过OI检查）
+	positionSymbols := make(map[string]bool)
+	for _, pos := range ctx.Positions {
+		positionSymbols[pos.Symbol] = true
+	}
+
 	for symbol := range symbolSet {
 		data, err := GetMarketData(symbol)
 		if err != nil {
 			// 单个币种失败不影响整体，只记录错误
 			continue
 		}
+
+		// ⚠️ 流动性过滤：持仓价值低于15M USD的币种不做（多空都不做）
+		// 持仓价值 = 持仓量 × 当前价格
+		// 但现有持仓必须保留（需要决策是否平仓）
+		isExistingPosition := positionSymbols[symbol]
+		if !isExistingPosition && data.OpenInterest != nil && data.CurrentPrice > 0 {
+			// 计算持仓价值（USD）= 持仓量 × 当前价格
+			oiValue := data.OpenInterest.Latest * data.CurrentPrice
+			oiValueInMillions := oiValue / 1_000_000 // 转换为百万美元单位
+			if oiValueInMillions < 15 {
+				log.Printf("⚠️  %s 持仓价值过低(%.2fM USD < 15M)，跳过此币种 [持仓量:%.0f × 价格:%.4f]",
+					symbol, oiValueInMillions, data.OpenInterest.Latest, data.CurrentPrice)
+				continue
+			}
+		}
+
 		ctx.MarketDataMap[symbol] = data
 	}
 
@@ -169,14 +192,22 @@ func calculateMaxCandidates(ctx *TradingContext) int {
 func buildFullDecisionPrompt(ctx *TradingContext) string {
 	var sb strings.Builder
 
-	sb.WriteString("# 🤖 AI 摆动交易实盘竞赛系统\n\n")
-	sb.WriteString("你是一个**激进型**专业加密货币摆动交易AI，正在参与实盘交易竞赛。\n\n")
-	sb.WriteString("## ⚡ 交易风格定位\n")
-	sb.WriteString("- **风格**: 极度激进型/重仓波段\n")
-	sb.WriteString("- **目标**: 追求极致收益，充分利用每一分资金\n")
-	sb.WriteString("- **仓位策略**: 单笔60-90%账户净值，极强信号可满仓100%\n")
-	sb.WriteString("- **杠杆范围**: 积极使用15-20倍杠杆，放大收益\n")
-	sb.WriteString("- **持仓数量**: 1-3个重仓持仓，保持极高资金使用率（目标80-95%）\n\n")
+	sb.WriteString("# 🤖 AI 双向摆动交易实盘竞赛系统\n\n")
+	sb.WriteString("你是一个**激进型**专业加密货币双向摆动交易AI，正在参与实盘交易竞赛。\n\n")
+	sb.WriteString("## ⚡ 交易风格\n")
+	sb.WriteString("- **激进型摆动交易**，做多做空机会均等，只看机会质量\n")
+	sb.WriteString("- 目标保证金使用率：70-85%，充分利用资金\n\n")
+
+	// 添加BTC市场趋势
+	sb.WriteString("## 🌍 BTC市场趋势\n")
+	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {
+		sb.WriteString(fmt.Sprintf("- 价格: %.2f | 1h: %+.2f%% | 4h: %+.2f%%\n",
+			btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h))
+		sb.WriteString(fmt.Sprintf("- MACD: %.4f | RSI: %.2f | 资金费率: %.6f\n\n",
+			btcData.CurrentMACD, btcData.CurrentRSI7, btcData.FundingRate))
+	} else {
+		sb.WriteString("BTC数据暂无\n\n")
+	}
 
 	// 系统状态
 	sb.WriteString("## 📊 系统状态\n")
@@ -221,11 +252,9 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 		sb.WriteString("暂无持仓\n\n")
 	}
 
-	// 候选币种池 - 显示所有获取了市场数据的币种
-	sb.WriteString("## 🎯 候选币种池（AI500 + OI Top合并）\n")
-	sb.WriteString(fmt.Sprintf("**总共 %d 个候选币种的市场数据**\n", len(ctx.MarketDataMap)))
-	sb.WriteString("说明: (AI500)=AI评分高 | (OI_Top)=持仓量增长快 | (双重)=两者都满足\n")
-	sb.WriteString("**注意**: 这些标签仅供你分析参考，JSON决策中只需要symbol名称即可\n\n")
+	// 候选币种池
+	sb.WriteString("## 🎯 候选币种池\n")
+	sb.WriteString(fmt.Sprintf("共 %d 个币种（已过滤持仓价值<15M USD的低流动性币种）\n\n", len(ctx.MarketDataMap)))
 
 	displayedCount := 0
 	for _, coin := range ctx.CandidateCoins {
@@ -271,175 +300,51 @@ func buildFullDecisionPrompt(ctx *TradingContext) string {
 
 	// AI决策要求
 	sb.WriteString("## 🎯 你的任务\n\n")
-	sb.WriteString("**重要**：请按以下顺序进行决策分析：\n\n")
-	sb.WriteString("### 第一步：分析现有持仓（如果有）\n")
-	sb.WriteString("- 评估每个持仓的盈亏状态\n")
-	sb.WriteString("- 判断技术指标是否支持继续持有\n")
-	sb.WriteString("- 决定是否需要平仓/止盈/止损\n")
-	sb.WriteString("- 计算平仓后可释放的资金\n\n")
-	sb.WriteString("### 第二步：评估候选池中的新机会\n")
-	sb.WriteString(fmt.Sprintf("- 从上面 **%d 个候选币种**中找出技术形态最强的2-5个标的\n", len(ctx.MarketDataMap)))
-	sb.WriteString("- **综合评分维度**：\n")
-	sb.WriteString("  1. 技术指标：价格趋势、RSI、MACD\n")
-	sb.WriteString("  2. 市场热度：标注(OI_Top)的币种，持仓量增长说明资金流入\n")
-	sb.WriteString("  3. AI评分：标注(AI500)的币种，AI评分高\n")
-	sb.WriteString("  4. 双重信号：标注(AI500+OI_Top双重信号)的币种，优先级最高\n")
-	sb.WriteString("- 标注每个强势币种的信号强度（强/中/弱）\n\n")
-	sb.WriteString("### 第三步：换仓机会评估（关键！）\n")
-	sb.WriteString("- **对比现有持仓 vs 新发现的强势币种**\n")
-	sb.WriteString("- 如果候选池中有明显更强的机会（信号更强、趋势更明确）：\n")
-	sb.WriteString("  - 考虑平掉表现较弱/盈利已够/趋势转弱的持仓\n")
-	sb.WriteString("  - 用释放的资金开仓更强的新机会\n")
-	sb.WriteString("- **换仓条件**：新机会的综合评分明显优于现有持仓（至少高20%）\n")
-	sb.WriteString("- 即使保证金使用率高（80-95%），也可以通过换仓优化持仓质量\n\n")
-	sb.WriteString("### 第四步：账户风险状态与开仓决策\n")
-	sb.WriteString("- 当前保证金使用率是否安全\n")
-	sb.WriteString("- 是否有足够的可用余额\n")
-	sb.WriteString("- **极度激进开仓条件**：\n")
-	sb.WriteString("  - 可用余额至少10%以上即可考虑（极度激进策略）\n")
-	sb.WriteString("  - 保证金使用率在95%以下都可以开仓\n")
-	sb.WriteString("  - 发现高确定性机会时，大胆下单\n")
-	sb.WriteString("- 如果没有可用余额但发现极强机会 → 优先考虑换仓策略\n\n")
+	sb.WriteString("分析所有市场数据，自主决策：\n")
+	sb.WriteString("1. 评估现有持仓 → 决定持有或平仓\n")
+	sb.WriteString(fmt.Sprintf("2. 从%d个候选币种中找机会 → 多空均可\n", len(ctx.MarketDataMap)))
+	sb.WriteString("3. 资金允许时开新仓 → 确保保证金使用率<90%%\n\n")
 
-	sb.WriteString("### 📋 决策原则（高杠杆+多仓位策略）\n")
-	sb.WriteString("1. **仓位价值上限 - 区分主流币和山寨币**:\n")
-	sb.WriteString(fmt.Sprintf("   **山寨币（普通币种）**: 单币种最多 5倍账户净值 = %.0f USDT\n", ctx.Account.TotalEquity*5))
-	sb.WriteString("   - 中等信号（评分7-8分）：账户净值 × 4倍\n")
-	sb.WriteString("   - 强信号（评分8-9分）：账户净值 × 4.5倍\n")
-	sb.WriteString("   - 极强信号（评分9-10分）：账户净值 × 5倍（山寨币上限）\n")
-	sb.WriteString(fmt.Sprintf("   **BTCUSDT/ETHUSDT（主流币）**: 单币种最多 20倍账户净值 = %.0f USDT\n", ctx.Account.TotalEquity*20))
-	sb.WriteString("   - 中等信号（评分7-8分）：账户净值 × 15倍\n")
-	sb.WriteString("   - 强信号（评分8-9分）：账户净值 × 18倍\n")
-	sb.WriteString("   - 极强信号（评分9-10分）：账户净值 × 20倍（BTC/ETH上限）\n")
-	sb.WriteString("2. **杠杆策略 - 区分主流币和山寨币**:\n")
-	sb.WriteString("   **关键**: 使用更高杠杆可以节省保证金，同时持有更多币种！\n")
-	sb.WriteString("   **重要限制**:\n")
-	sb.WriteString("   - **BTCUSDT/ETHUSDT（主流币）**: 可用20-50倍高杠杆（推荐50倍节省保证金）\n")
-	sb.WriteString("   - **其他山寨币**: 最高20倍杠杆（建议15-20倍）\n")
-	sb.WriteString("   - **保证金占用** = position_size_usd / leverage\n")
-	sb.WriteString(fmt.Sprintf("   - **示例1** (BTC/ETH开20000 USDT仓位 = 20倍账户净值):\n"))
-	sb.WriteString(fmt.Sprintf("     - 用50倍杠杆: 保证金 = 20000/50 = 400 USDT (仅占账户%.0f%%)\n", (400/ctx.Account.TotalEquity)*100))
-	sb.WriteString(fmt.Sprintf("   - **示例2** (山寨币开5000 USDT仓位 = 5倍账户净值):\n"))
-	sb.WriteString(fmt.Sprintf("     - 用20倍杠杆: 保证金 = 5000/20 = 250 USDT (占账户%.0f%%)\n", (250/ctx.Account.TotalEquity)*100))
-	sb.WriteString("   - **好处**: 主流币可以开更大仓位！用高杠杆可以同时持有多个币种，分散风险！\n")
-	sb.WriteString("3. **风险控制**: 保证金使用率超过90%%时不要开新仓，目标保持在70-85%%\n")
-	sb.WriteString("4. **持仓优先**: 先确保现有持仓健康，发现更强机会时积极换仓\n")
-	sb.WriteString("5. **止损止盈**: 风险回报比至少1:2，追求更高收益\n")
-	sb.WriteString("6. **多仓位策略**: 使用高杠杆可以同时持有4-8个币种，分散风险并捕捉更多机会\n\n")
+	sb.WriteString("### 📋 硬性规则\n")
+	sb.WriteString(fmt.Sprintf("1. **仓位价值上限**: 山寨币≤%.0f USDT (5倍净值) | BTC/ETH≤%.0f USDT (20倍净值)\n", ctx.Account.TotalEquity*5, ctx.Account.TotalEquity*20))
+	sb.WriteString("2. **杠杆上限**: 山寨币≤20倍 | BTC/ETH≤50倍\n")
+	sb.WriteString("3. **保证金使用率**: 不得超过90%% (目标70-85%%)\n")
+	sb.WriteString("4. **止损止盈**: 风险回报比≥1:2\n\n")
 
-	sb.WriteString("### 📤 输出格式要求\n\n")
-	sb.WriteString("**重要**: 请直接输出思维链和JSON，不要使用任何markdown代码块标记（不要用```或```json）\n\n")
-
-	sb.WriteString("**第一部分**: 思维链分析（纯文本，按以下格式）\n\n")
-	sb.WriteString("第一步：现有持仓分析\n")
-	sb.WriteString("- [如无持仓，写\"无持仓\"并跳过]\n")
-	sb.WriteString("- 逐个分析每个持仓的技术指标、盈亏状态、信号强度\n")
-	sb.WriteString("- 给每个持仓打分（1-10分）\n\n")
-	sb.WriteString("第二步：候选池强势币种筛选\n")
-	sb.WriteString("- 从候选池中找出2-5个技术形态最强的币种\n")
-	sb.WriteString("- 给每个强势币种打分（1-10分）\n")
-	sb.WriteString("- 标注信号强度（强/中/弱）\n\n")
-	sb.WriteString("第三步：换仓机会评估（关键！）\n")
-	sb.WriteString("- 对比持仓评分 vs 候选币种评分\n")
-	sb.WriteString("- 如果候选池有明显更强的机会（评分差距≥2分）：\n")
-	sb.WriteString("  - 列出建议换仓的持仓和目标币种\n")
-	sb.WriteString("  - 说明换仓理由（为什么新机会更好）\n")
-	sb.WriteString("- 如果没有明显更好的机会：说明\"无需换仓\"\n\n")
-	sb.WriteString("第四步：账户风险与最终决策\n")
-	sb.WriteString("- 当前保证金使用率: X%\n")
-	sb.WriteString("- 可用余额占比: X%\n")
-	sb.WriteString("- 最终决策总结：\n")
-	sb.WriteString("  - 换仓决策: X个（平A开B）\n")
-	sb.WriteString("  - 平仓决策: X个（止盈/止损）\n")
-	sb.WriteString("  - 开仓决策: X个（新增仓位）\n")
-	sb.WriteString("  - 持有决策: X个\n\n")
+	sb.WriteString("### 📤 输出格式\n\n")
+	sb.WriteString("**思维链分析** (纯文本)\n")
+	sb.WriteString("分析持仓 → 找新机会 → 决定开仓\n\n")
 	sb.WriteString("---\n\n")
-
-	sb.WriteString("**第二部分**: 决策JSON数组（纯JSON，不要任何代码块标记）\n\n")
+	sb.WriteString("**决策JSON** (不要用```标记)\n")
 	sb.WriteString("[\n")
-	sb.WriteString("  {\n")
-	sb.WriteString("    \"symbol\": \"BTCUSDT\",\n")
-	sb.WriteString("    \"action\": \"open_long\",\n")
-	sb.WriteString("    \"leverage\": 10,\n")
-	sb.WriteString("    \"position_size_usd\": 300.0,\n")
-	sb.WriteString("    \"stop_loss\": 45000.0,\n")
-	sb.WriteString("    \"take_profit\": 50000.0,\n")
-	sb.WriteString("    \"reasoning\": \"强势突破，激进做多\"\n")
-	sb.WriteString("  },\n")
-	sb.WriteString("  {\n")
-	sb.WriteString("    \"symbol\": \"ETHUSDT\",\n")
-	sb.WriteString("    \"action\": \"hold\",\n")
-	sb.WriteString("    \"reasoning\": \"继续观察，趋势未明\"\n")
-	sb.WriteString("  }\n")
+	sb.WriteString("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": 15000, \"stop_loss\": 92000, \"take_profit\": 98000, \"reasoning\": \"突破做多\"},\n")
+	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"hold\", \"reasoning\": \"持续观察\"}\n")
 	sb.WriteString("]\n\n")
+	sb.WriteString("**action类型**: open_long | open_short | close_long | close_short | hold | wait\n")
+	sb.WriteString("**开仓必填**: leverage, position_size_usd, stop_loss, take_profit\n")
+	sb.WriteString("**position_size_usd**: 仓位价值(非保证金)，保证金=position_size_usd/leverage\n\n")
 
-	sb.WriteString("### ⚠️ 重要说明\n")
-	sb.WriteString("- `action`类型: **open_long**(开多), **open_short**(开空), **close_long**(平多), **close_short**(平空), **hold**(持有), **wait**(观望)\n")
-	sb.WriteString("- 开仓时必须提供: `leverage`, `position_size_usd`, `stop_loss`, `take_profit`\n")
-	sb.WriteString("- 平仓/持有/观望时只需提供: `action`, `reasoning`\n")
-	sb.WriteString("- `symbol`字段: **只写币种名称**（如BTCUSDT），不要带任何标签或括号\n")
-	sb.WriteString("- `position_size_usd`是实际投入的USD金额（仓位价值），不是保证金\n")
-	sb.WriteString("- **决策顺序很重要**: JSON数组中先列出平仓决策，再列出开仓决策\n")
-	sb.WriteString("- **风险控制**: 如果保证金使用率>90%，不要输出任何开仓决策\n")
-	sb.WriteString(fmt.Sprintf("- **仓位大小计算示例（账户净值: %.2f USDT）**:\n", ctx.Account.TotalEquity))
-	sb.WriteString("  **山寨币仓位示例**:\n")
-	sb.WriteString(fmt.Sprintf("  - 山寨币上限: %.0f USDT (5倍账户净值)\n", ctx.Account.TotalEquity*5))
-	sb.WriteString(fmt.Sprintf("  - 评分7-8分: position_size_usd = %.0f USDT (4倍账户净值)\n", ctx.Account.TotalEquity*4))
-	sb.WriteString(fmt.Sprintf("    用20倍杠杆: 保证金 = %.0f/20 = %.0f USDT\n", ctx.Account.TotalEquity*4, ctx.Account.TotalEquity*4/20))
-	sb.WriteString(fmt.Sprintf("  - 评分8-9分: position_size_usd = %.0f USDT (4.5倍账户净值)\n", ctx.Account.TotalEquity*4.5))
-	sb.WriteString(fmt.Sprintf("    用20倍杠杆: 保证金 = %.0f/20 = %.0f USDT\n", ctx.Account.TotalEquity*4.5, ctx.Account.TotalEquity*4.5/20))
-	sb.WriteString(fmt.Sprintf("  - 评分9-10分: position_size_usd = %.0f USDT (5倍账户净值上限)\n", ctx.Account.TotalEquity*5))
-	sb.WriteString(fmt.Sprintf("    用20倍杠杆: 保证金 = %.0f/20 = %.0f USDT\n", ctx.Account.TotalEquity*5, ctx.Account.TotalEquity*5/20))
-	sb.WriteString("  **BTC/ETH仓位示例（可以开更大！）**:\n")
-	sb.WriteString(fmt.Sprintf("  - BTC/ETH上限: %.0f USDT (20倍账户净值)\n", ctx.Account.TotalEquity*20))
-	sb.WriteString(fmt.Sprintf("  - 评分7-8分: position_size_usd = %.0f USDT (15倍账户净值)\n", ctx.Account.TotalEquity*15))
-	sb.WriteString(fmt.Sprintf("    用50倍杠杆: 保证金 = %.0f/50 = %.0f USDT (推荐！)\n", ctx.Account.TotalEquity*15, ctx.Account.TotalEquity*15/50))
-	sb.WriteString(fmt.Sprintf("  - 评分8-9分: position_size_usd = %.0f USDT (18倍账户净值)\n", ctx.Account.TotalEquity*18))
-	sb.WriteString(fmt.Sprintf("    用50倍杠杆: 保证金 = %.0f/50 = %.0f USDT (推荐！)\n", ctx.Account.TotalEquity*18, ctx.Account.TotalEquity*18/50))
-	sb.WriteString(fmt.Sprintf("  - 评分9-10分: position_size_usd = %.0f USDT (20倍账户净值上限)\n", ctx.Account.TotalEquity*20))
-	sb.WriteString(fmt.Sprintf("    用50倍杠杆: 保证金 = %.0f/50 = %.0f USDT (推荐！)\n", ctx.Account.TotalEquity*20, ctx.Account.TotalEquity*20/50))
-	sb.WriteString("- **记住**: 山寨币最多5倍账户净值，BTC/ETH最多20倍账户净值\n")
-	sb.WriteString("- **杠杆选择**: BTC/ETH最高50倍，山寨币最高20倍\n")
-	sb.WriteString("- 请确保JSON格式严格正确，可以被解析\n\n")
+	sb.WriteString("### 📝 决策示例\n\n")
 
-	sb.WriteString("### 📝 决策示例（注意：不要使用markdown代码块）\n\n")
+	// 简化示例仓位
+	btcSize := ctx.Account.TotalEquity * 18
+	altSize := ctx.Account.TotalEquity * 4.5
 
-	// 动态计算示例仓位
-	// 山寨币: 最多5倍账户净值
-	altcoin_78score := ctx.Account.TotalEquity * 4   // 评分7-8分: 4倍净值
-	altcoin_89score := ctx.Account.TotalEquity * 4.5 // 评分8-9分: 4.5倍净值
-	altcoin_910score := ctx.Account.TotalEquity * 5  // 评分9-10分: 5倍净值（山寨币上限）
-	// BTC/ETH: 最多20倍账户净值
-	btceth_89score := ctx.Account.TotalEquity * 18  // 评分8-9分: 18倍净值
-	btceth_910score := ctx.Account.TotalEquity * 20 // 评分9-10分: 20倍净值（BTC/ETH上限）
-
-	sb.WriteString("**场景1 - 换仓（发现更好机会）**:\n")
+	sb.WriteString("**场景1 - 多空混合**:\n")
 	sb.WriteString("[\n")
-	sb.WriteString("  {\"symbol\": \"SOLUSDT\", \"action\": \"close_long\", \"reasoning\": \"山寨币趋势转弱（评分6分），平仓释放资金\"},\n")
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"ETHUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 3200.0, \"take_profit\": 3800.0, \"reasoning\": \"主流币ETH（评分10分=20倍净值上限，50倍杠杆仅需%.0f保证金）\"},\n", btceth_910score, btceth_910score/50))
-	sb.WriteString("  {\"symbol\": \"BTCUSDT\", \"action\": \"hold\", \"reasoning\": \"BTC趋势延续，继续持有\"}\n")
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 92000, \"take_profit\": 98000, \"reasoning\": \"BTC多头\"},\n", btcSize))
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"SOLUSDT\", \"action\": \"open_short\", \"leverage\": 20, \"position_size_usd\": %.0f, \"stop_loss\": 130, \"take_profit\": 110, \"reasoning\": \"SOL空头\"}\n", altSize))
 	sb.WriteString("]\n\n")
-	sb.WriteString("**场景2 - 无持仓，开2个仓位（主流币+山寨币）**:\n")
+	sb.WriteString("**场景2 - 全做空**:\n")
 	sb.WriteString("[\n")
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 92000.0, \"take_profit\": 105000.0, \"reasoning\": \"主流币BTC突破（评分9分=18倍净值，50倍杠杆仅需%.0f保证金）\"},\n", btceth_89score, btceth_89score/50))
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"AVAXUSDT\", \"action\": \"open_short\", \"leverage\": 20, \"position_size_usd\": %.0f, \"stop_loss\": 32.0, \"take_profit\": 26.0, \"reasoning\": \"山寨币空头趋势（评分8分=4倍净值，20倍杠杆需%.0f保证金）\"}\n", altcoin_78score, altcoin_78score/20))
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 96000, \"take_profit\": 85000, \"reasoning\": \"BTC破位\"},\n", btcSize))
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"AVAXUSDT\", \"action\": \"open_short\", \"leverage\": 20, \"position_size_usd\": %.0f, \"stop_loss\": 32, \"take_profit\": 26, \"reasoning\": \"AVAX跟跌\"}\n", altSize))
 	sb.WriteString("]\n\n")
-	sb.WriteString("**场景3 - 发现极强信号，BTC满仓**:\n")
+	sb.WriteString("**场景3 - 全做多**:\n")
 	sb.WriteString("[\n")
-	sb.WriteString("  {\"symbol\": \"XRPUSDT\", \"action\": \"close_short\", \"reasoning\": \"小亏损，释放资金换仓\"},\n")
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 90000.0, \"take_profit\": 110000.0, \"reasoning\": \"BTC双重信号（评分10分=20倍净值上限，50倍杠杆只需%.0f保证金）\"},\n", btceth_910score, btceth_910score/50))
-	sb.WriteString("  {\"symbol\": \"SOLUSDT\", \"action\": \"hold\", \"reasoning\": \"趋势良好，保留\"}\n")
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 92000, \"take_profit\": 105000, \"reasoning\": \"BTC突破\"},\n", btcSize))
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"ETHUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 3200, \"take_profit\": 3800, \"reasoning\": \"ETH跟涨\"}\n", btcSize))
 	sb.WriteString("]\n\n")
-	sb.WriteString("**场景4 - 多仓位分散（1个BTC+3个山寨币）**:\n")
-	sb.WriteString("[\n")
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_long\", \"leverage\": 50, \"position_size_usd\": %.0f, \"stop_loss\": 91000.0, \"take_profit\": 108000.0, \"reasoning\": \"主流币BTC极强信号（18倍净值，50倍杠杆仅需%.0f保证金）\"},\n", btceth_89score, btceth_89score/50))
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"SOLUSDT\", \"action\": \"open_long\", \"leverage\": 20, \"position_size_usd\": %.0f, \"stop_loss\": 115.0, \"take_profit\": 145.0, \"reasoning\": \"山寨币SOL（评分8分=4倍净值，20倍杠杆需%.0f保证金）\"},\n", altcoin_78score, altcoin_78score/20))
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"AVAXUSDT\", \"action\": \"open_long\", \"leverage\": 18, \"position_size_usd\": %.0f, \"stop_loss\": 28.0, \"take_profit\": 35.0, \"reasoning\": \"山寨币AVAX（评分8分=4.5倍净值，18倍杠杆需%.0f保证金）\"},\n", altcoin_89score, altcoin_89score/18))
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BNBUSDT\", \"action\": \"open_short\", \"leverage\": 20, \"position_size_usd\": %.0f, \"stop_loss\": 670.0, \"take_profit\": 590.0, \"reasoning\": \"山寨币BNB空头（5倍净值上限，20倍杠杆需%.0f保证金）\"}\n", altcoin_910score, altcoin_910score/20))
-	sb.WriteString("]\n")
-	sb.WriteString(fmt.Sprintf("# 以上4个仓位，总仓位价值=%.0f USDT，用高杠杆总共只占用约%.0f%%保证金！\n\n",
-		(btceth_89score + altcoin_78score + altcoin_89score + altcoin_910score),
-		((btceth_89score/50 + altcoin_78score/20 + altcoin_89score/18 + altcoin_910score/20) / ctx.Account.TotalEquity * 100)))
 
 	sb.WriteString("现在请开始分析并给出你的决策！\n")
 
@@ -451,14 +356,16 @@ func formatMarketDataBrief(data *MarketData) string {
 	var sb strings.Builder
 
 	sb.WriteString("**市场数据** (3分钟线):\n")
-	sb.WriteString(fmt.Sprintf("  - 价格: %.4f | EMA20: %.4f (%s)\n",
-		data.CurrentPrice, data.CurrentEMA20, pricePosition(data.CurrentPrice, data.CurrentEMA20)))
-	sb.WriteString(fmt.Sprintf("  - MACD: %.4f (%s) | RSI(7): %.2f (%s)\n",
+	sb.WriteString(fmt.Sprintf("  - 价格: %.4f | 1h变化: %+.2f%% | 4h变化: %+.2f%% (%s)\n",
+		data.CurrentPrice, data.PriceChange1h, data.PriceChange4h, priceTrend(data.PriceChange1h, data.PriceChange4h)))
+	sb.WriteString(fmt.Sprintf("  - EMA20: %.4f (%s) | MACD: %.4f (%s) | RSI(7): %.2f (%s)\n",
+		data.CurrentEMA20, pricePosition(data.CurrentPrice, data.CurrentEMA20),
 		data.CurrentMACD, macdTrend(data.CurrentMACD), data.CurrentRSI7, rsiStatus(data.CurrentRSI7)))
 
 	if data.OpenInterest != nil {
 		oiChange := ((data.OpenInterest.Latest - data.OpenInterest.Average) / data.OpenInterest.Average) * 100
-		sb.WriteString(fmt.Sprintf("  - 持仓量: %+.2f%% | 资金费率: %.6f\n", oiChange, data.FundingRate))
+		fundingSignal := fundingRateSignal(data.FundingRate)
+		sb.WriteString(fmt.Sprintf("  - 持仓量: %+.2f%% | 资金费率: %.6f (%s)\n", oiChange, data.FundingRate, fundingSignal))
 	}
 
 	return sb.String()

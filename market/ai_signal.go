@@ -394,6 +394,35 @@ func rsiStatus(rsi float64) string {
 	return "中性"
 }
 
+// 辅助函数：价格趋势（基于1h和4h变化）
+func priceTrend(change1h, change4h float64) string {
+	if change1h > 2 && change4h > 5 {
+		return "强势上涨"
+	} else if change1h > 0 && change4h > 0 {
+		return "温和上涨"
+	} else if change1h < -2 && change4h < -5 {
+		return "强势下跌"
+	} else if change1h < 0 && change4h < 0 {
+		return "温和下跌"
+	} else {
+		return "震荡"
+	}
+}
+
+// 辅助函数：资金费率信号（交易机会解读）
+func fundingRateSignal(rate float64) string {
+	if rate > 0.001 {
+		return "多头拥挤，考虑做空"
+	} else if rate > 0.0005 {
+		return "多头占优"
+	} else if rate < -0.001 {
+		return "空头拥挤，考虑做多"
+	} else if rate < -0.0005 {
+		return "空头占优"
+	}
+	return "中性"
+}
+
 // 辅助函数：资金费率状态
 func fundingRateStatus(rate float64) string {
 	if rate > 0.0005 {
