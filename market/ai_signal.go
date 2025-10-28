@@ -211,12 +211,48 @@ func formatMarketDataForAI(data *MarketData) string {
 	return sb.String()
 }
 
-// callDeepSeekAPI 调用AI API（支持DeepSeek和Qwen）
+// callDeepSeekAPI 调用AI API（支持DeepSeek和Qwen），带重试机制
 func callDeepSeekAPI(prompt string) (string, error) {
 	if defaultConfig.APIKey == "" {
 		return "", fmt.Errorf("AI API密钥未设置，请先调用 SetDeepSeekAPIKey() 或 SetQwenAPIKey()")
 	}
 
+	// 重试配置
+	maxRetries := 3
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			fmt.Printf("⚠️  AI API调用失败，正在重试 (%d/%d)...\n", attempt, maxRetries)
+		}
+
+		result, err := callDeepSeekAPIOnce(prompt)
+		if err == nil {
+			if attempt > 1 {
+				fmt.Printf("✓ AI API重试成功\n")
+			}
+			return result, nil
+		}
+
+		lastErr = err
+		// 如果不是网络错误，不重试
+		if !isRetryableError(err) {
+			return "", err
+		}
+
+		// 重试前等待
+		if attempt < maxRetries {
+			waitTime := time.Duration(attempt) * 2 * time.Second
+			fmt.Printf("⏳ 等待%v后重试...\n", waitTime)
+			time.Sleep(waitTime)
+		}
+	}
+
+	return "", fmt.Errorf("重试%d次后仍然失败: %w", maxRetries, lastErr)
+}
+
+// callDeepSeekAPIOnce 单次调用AI API
+func callDeepSeekAPIOnce(prompt string) (string, error) {
 	// 构建请求体
 	requestBody := map[string]interface{}{
 		"model": defaultConfig.Model,
@@ -292,6 +328,26 @@ func callDeepSeekAPI(prompt string) (string, error) {
 	}
 
 	return result.Choices[0].Message.Content, nil
+}
+
+// isRetryableError 判断错误是否可重试
+func isRetryableError(err error) bool {
+	errStr := err.Error()
+	// 网络错误、超时、EOF等可以重试
+	retryableErrors := []string{
+		"EOF",
+		"timeout",
+		"connection reset",
+		"connection refused",
+		"temporary failure",
+		"no such host",
+	}
+	for _, retryable := range retryableErrors {
+		if strings.Contains(errStr, retryable) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseAIResponse 解析AI响应
