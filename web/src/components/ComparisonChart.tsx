@@ -134,13 +134,13 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
     }
   };
 
-  // 自定义Tooltip
+  // 自定义Tooltip - Binance Style
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 shadow-xl">
-          <div className="text-xs text-gray-400 mb-2">
+        <div className="rounded p-3 shadow-xl" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
+          <div className="text-xs mb-2" style={{ color: '#848E9C' }}>
             Cycle #{data.cycle} - {data.time}
           </div>
           {traders.map((trader) => {
@@ -156,9 +156,9 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
                 >
                   {trader.trader_name}
                 </div>
-                <div className={`text-sm mono font-bold ${pnlPct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className="text-sm mono font-bold" style={{ color: pnlPct >= 0 ? '#0ECB81' : '#F6465D' }}>
                   {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%
-                  <span className="text-xs text-gray-500 ml-2 font-normal">
+                  <span className="text-xs ml-2 font-normal" style={{ color: '#848E9C' }}>
                     ({equity?.toFixed(2)} USDT)
                   </span>
                 </div>
@@ -198,13 +198,13 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
             ))}
           </defs>
 
-          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#2B3139" />
 
           <XAxis
             dataKey="time"
-            stroke="#71717a"
-            tick={{ fill: '#71717a', fontSize: 11 }}
-            tickLine={{ stroke: '#27272a' }}
+            stroke="#5E6673"
+            tick={{ fill: '#848E9C', fontSize: 11 }}
+            tickLine={{ stroke: '#2B3139' }}
             interval={Math.floor(displayData.length / 12)}
             angle={-15}
             textAnchor="end"
@@ -212,9 +212,9 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
           />
 
           <YAxis
-            stroke="#71717a"
-            tick={{ fill: '#71717a', fontSize: 12 }}
-            tickLine={{ stroke: '#27272a' }}
+            stroke="#5E6673"
+            tick={{ fill: '#848E9C', fontSize: 12 }}
+            tickLine={{ stroke: '#2B3139' }}
             domain={calculateYDomain()}
             tickFormatter={(value) => `${value.toFixed(1)}%`}
             width={60}
@@ -224,12 +224,12 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
 
           <ReferenceLine
             y={0}
-            stroke="#6b7280"
+            stroke="#474D57"
             strokeDasharray="5 5"
-            strokeWidth={2}
+            strokeWidth={1.5}
             label={{
               value: 'Break Even',
-              fill: '#9ca3af',
+              fill: '#848E9C',
               fontSize: 11,
               position: 'right',
             }}

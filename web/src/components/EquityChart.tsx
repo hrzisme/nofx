@@ -120,20 +120,19 @@ export function EquityChart({ traderId }: EquityChartProps) {
     }
   };
 
-  // 自定义Tooltip
+  // 自定义Tooltip - Binance Style
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 shadow-xl">
-          <div className="text-xs text-gray-400 mb-1">Cycle #{data.cycle}</div>
-          <div className="font-semibold mono">
+        <div className="rounded p-3 shadow-xl" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
+          <div className="text-xs mb-1" style={{ color: '#848E9C' }}>Cycle #{data.cycle}</div>
+          <div className="font-bold mono" style={{ color: '#EAECEF' }}>
             {data.raw_equity.toFixed(2)} USDT
           </div>
           <div
-            className={`text-sm mono ${
-              data.raw_pnl >= 0 ? 'text-green-400' : 'text-red-400'
-            }`}
+            className="text-sm mono font-bold"
+            style={{ color: data.raw_pnl >= 0 ? '#0ECB81' : '#F6465D' }}
           >
             {data.raw_pnl >= 0 ? '+' : ''}
             {data.raw_pnl.toFixed(2)} USDT ({data.raw_pnl_pct >= 0 ? '+' : ''}
@@ -146,19 +145,18 @@ export function EquityChart({ traderId }: EquityChartProps) {
   };
 
   return (
-    <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
+    <div className="binance-card p-5">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-5">
         <div>
-          <h3 className="text-lg font-semibold mb-1">账户净值曲线</h3>
+          <h3 className="text-base font-semibold mb-1" style={{ color: '#EAECEF' }}>账户净值曲线</h3>
           <div className="flex items-baseline gap-3">
-            <span className="text-2xl font-bold mono">
+            <span className="text-2xl font-bold mono" style={{ color: '#EAECEF' }}>
               {account?.total_equity.toFixed(2) || '0.00'} USDT
             </span>
             <span
-              className={`text-sm font-semibold mono ${
-                isProfit ? 'text-green-400' : 'text-red-400'
-              }`}
+              className="text-sm font-bold mono"
+              style={{ color: isProfit ? '#0ECB81' : '#F6465D' }}
             >
               {isProfit ? '+' : ''}
               {currentValue.raw_pnl.toFixed(2)} USDT ({isProfit ? '+' : ''}
@@ -168,24 +166,24 @@ export function EquityChart({ traderId }: EquityChartProps) {
         </div>
 
         {/* Display Mode Toggle */}
-        <div className="flex gap-1 bg-gray-800/50 rounded-lg p-1">
+        <div className="flex gap-1 rounded p-1" style={{ background: '#0B0E11' }}>
           <button
             onClick={() => setDisplayMode('dollar')}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${
-              displayMode === 'dollar'
-                ? 'bg-gray-700 text-white'
-                : 'text-gray-400 hover:text-white'
-            }`}
+            className="px-3 py-1.5 rounded text-sm font-semibold transition-all"
+            style={displayMode === 'dollar'
+              ? { background: '#F0B90B', color: '#000' }
+              : { background: 'transparent', color: '#848E9C' }
+            }
           >
             美元 ($)
           </button>
           <button
             onClick={() => setDisplayMode('percent')}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${
-              displayMode === 'percent'
-                ? 'bg-gray-700 text-white'
-                : 'text-gray-400 hover:text-white'
-            }`}
+            className="px-3 py-1.5 rounded text-sm font-semibold transition-all"
+            style={displayMode === 'percent'
+              ? { background: '#F0B90B', color: '#000' }
+              : { background: 'transparent', color: '#848E9C' }
+            }
           >
             百分比 (%)
           </button>
@@ -197,25 +195,25 @@ export function EquityChart({ traderId }: EquityChartProps) {
         <LineChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 40 }}>
           <defs>
             <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#ededed" stopOpacity={0.9} />
-              <stop offset="95%" stopColor="#a1a1aa" stopOpacity={0.3} />
+              <stop offset="5%" stopColor="#F0B90B" stopOpacity={0.8} />
+              <stop offset="95%" stopColor="#FCD535" stopOpacity={0.2} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#2B3139" />
           <XAxis
             dataKey="time"
-            stroke="#71717a"
-            tick={{ fill: '#71717a', fontSize: 11 }}
-            tickLine={{ stroke: '#27272a' }}
+            stroke="#5E6673"
+            tick={{ fill: '#848E9C', fontSize: 11 }}
+            tickLine={{ stroke: '#2B3139' }}
             interval={Math.floor(chartData.length / 10)}
             angle={-15}
             textAnchor="end"
             height={60}
           />
           <YAxis
-            stroke="#71717a"
-            tick={{ fill: '#71717a', fontSize: 12 }}
-            tickLine={{ stroke: '#27272a' }}
+            stroke="#5E6673"
+            tick={{ fill: '#848E9C', fontSize: 12 }}
+            tickLine={{ stroke: '#2B3139' }}
             domain={calculateYDomain()}
             tickFormatter={(value) =>
               displayMode === 'dollar' ? `$${value.toFixed(0)}` : `${value}%`
@@ -224,11 +222,11 @@ export function EquityChart({ traderId }: EquityChartProps) {
           <Tooltip content={<CustomTooltip />} />
           <ReferenceLine
             y={displayMode === 'dollar' ? initialBalance : 0}
-            stroke="#6b7280"
+            stroke="#474D57"
             strokeDasharray="3 3"
             label={{
               value: displayMode === 'dollar' ? '初始' : '0%',
-              fill: '#9ca3af',
+              fill: '#848E9C',
               fontSize: 12,
             }}
           />
@@ -236,34 +234,34 @@ export function EquityChart({ traderId }: EquityChartProps) {
             type="monotone"
             dataKey="value"
             stroke="url(#colorGradient)"
-            strokeWidth={3}
-            dot={chartData.length > 50 ? false : { fill: '#ededed', r: 4 }}
-            activeDot={{ r: 6, fill: '#ffffff' }}
+            strokeWidth={2.5}
+            dot={chartData.length > 50 ? false : { fill: '#F0B90B', r: 3 }}
+            activeDot={{ r: 6, fill: '#FCD535', stroke: '#F0B90B', strokeWidth: 2 }}
           />
         </LineChart>
       </ResponsiveContainer>
 
       {/* Footer Stats */}
-      <div className="mt-4 grid grid-cols-4 gap-4 pt-4 border-t border-gray-800">
+      <div className="mt-4 grid grid-cols-4 gap-4 pt-4" style={{ borderTop: '1px solid #2B3139' }}>
         <div>
-          <div className="text-xs text-gray-400">初始余额</div>
-          <div className="text-sm font-semibold mono">
+          <div className="text-xs" style={{ color: '#848E9C' }}>初始余额</div>
+          <div className="text-sm font-bold mono" style={{ color: '#EAECEF' }}>
             {initialBalance.toFixed(2)} USDT
           </div>
         </div>
         <div>
-          <div className="text-xs text-gray-400">当前净值</div>
-          <div className="text-sm font-semibold mono">
+          <div className="text-xs" style={{ color: '#848E9C' }}>当前净值</div>
+          <div className="text-sm font-bold mono" style={{ color: '#EAECEF' }}>
             {currentValue.raw_equity.toFixed(2)} USDT
           </div>
         </div>
         <div>
-          <div className="text-xs text-gray-400">历史周期</div>
-          <div className="text-sm font-semibold mono">{history.length} 个</div>
+          <div className="text-xs" style={{ color: '#848E9C' }}>历史周期</div>
+          <div className="text-sm font-bold mono" style={{ color: '#EAECEF' }}>{history.length} 个</div>
         </div>
         <div>
-          <div className="text-xs text-gray-400">显示范围</div>
-          <div className="text-sm font-semibold mono">
+          <div className="text-xs" style={{ color: '#848E9C' }}>显示范围</div>
+          <div className="text-sm font-bold mono" style={{ color: '#EAECEF' }}>
             {history.length > MAX_DISPLAY_POINTS
               ? `最近 ${MAX_DISPLAY_POINTS}`
               : '全部'
