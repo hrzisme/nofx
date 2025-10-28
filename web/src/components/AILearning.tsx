@@ -396,109 +396,146 @@ export default function AILearning({ traderId }: AILearningProps) {
         </div>
         {/* 中间列结束 */}
 
-        {/* 右侧列：最近决策 (3列) */}
-        <div className="lg:col-span-3 space-y-4">
-          {latestDecisions && latestDecisions.length > 0 ? (
-            <>
-              {/* 标题卡 */}
-              <div className="rounded-xl p-4 backdrop-blur-sm" style={{
-                background: 'rgba(99, 102, 241, 0.1)',
-                border: '1px solid rgba(99, 102, 241, 0.3)'
-              }}>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">📝</span>
-                  <div>
-                    <h3 className="font-bold text-sm" style={{ color: '#C4B5FD' }}>Recent Decisions</h3>
-                    <p className="text-xs" style={{ color: '#94A3B8' }}>
-                      Last {latestDecisions.length} cycles
-                    </p>
-                  </div>
+        {/* 右侧列：历史成交记录 (3列) */}
+        <div className="lg:col-span-3">
+          <div className="rounded-2xl overflow-hidden sticky top-24" style={{
+            background: 'rgba(30, 35, 41, 0.4)',
+            border: '1px solid rgba(240, 185, 11, 0.2)',
+            maxHeight: 'calc(100vh - 200px)'
+          }}>
+            {/* 标题 - 固定在顶部 */}
+            <div className="p-4 border-b backdrop-blur-sm" style={{
+              background: 'rgba(240, 185, 11, 0.1)',
+              borderColor: 'rgba(240, 185, 11, 0.3)'
+            }}>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📜</span>
+                <div>
+                  <h3 className="font-bold text-sm" style={{ color: '#FCD34D' }}>Trade History</h3>
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>
+                    {performance?.recent_trades && performance.recent_trades.length > 0
+                      ? `Recent ${performance.recent_trades.length} completed trades`
+                      : 'Completed trades will appear here'}
+                  </p>
                 </div>
               </div>
+            </div>
 
-              {/* 决策卡片列表 */}
-              <div className="space-y-3">
-                {latestDecisions.map((decision, idx) => (
-                  <div key={idx} className="rounded-xl p-4 backdrop-blur-sm transition-all hover:scale-[1.02]" style={{
-                    background: idx === 0
-                      ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(99, 102, 241, 0.05) 100%)'
-                      : 'rgba(30, 35, 41, 0.4)',
-                    border: idx === 0
-                      ? '1px solid rgba(139, 92, 246, 0.4)'
-                      : '1px solid rgba(71, 85, 105, 0.3)',
-                    boxShadow: idx === 0
-                      ? '0 4px 16px rgba(139, 92, 246, 0.2)'
-                      : '0 2px 8px rgba(0, 0, 0, 0.1)'
-                  }}>
-                    {/* 头部 */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold mono px-2 py-1 rounded" style={{
-                          background: idx === 0 ? 'rgba(139, 92, 246, 0.3)' : 'rgba(99, 102, 241, 0.2)',
-                          color: idx === 0 ? '#C4B5FD' : '#A5B4FC'
-                        }}>
-                          #{decision.cycle_number}
-                        </span>
-                        {idx === 0 && (
-                          <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{
-                            background: 'rgba(139, 92, 246, 0.2)',
-                            color: '#C4B5FD'
+            {/* 滚动内容区域 */}
+            <div className="overflow-y-auto p-4 space-y-3" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+              {performance?.recent_trades && performance.recent_trades.length > 0 ? (
+                performance.recent_trades.map((trade: TradeOutcome, idx: number) => {
+                  const isProfitable = trade.pn_l >= 0;
+                  const isRecent = idx === 0;
+
+                  return (
+                    <div key={idx} className="rounded-xl p-4 backdrop-blur-sm transition-all hover:scale-[1.02]" style={{
+                      background: isRecent
+                        ? isProfitable
+                          ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(14, 203, 129, 0.05) 100%)'
+                          : 'linear-gradient(135deg, rgba(248, 113, 113, 0.15) 0%, rgba(246, 70, 93, 0.05) 100%)'
+                        : 'rgba(30, 35, 41, 0.4)',
+                      border: isRecent
+                        ? isProfitable ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(248, 113, 113, 0.4)'
+                        : '1px solid rgba(71, 85, 105, 0.3)',
+                      boxShadow: isRecent
+                        ? '0 4px 16px rgba(139, 92, 246, 0.2)'
+                        : '0 2px 8px rgba(0, 0, 0, 0.1)'
+                    }}>
+                      {/* 头部：币种和方向 */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base font-bold mono" style={{ color: '#E0E7FF' }}>
+                            {trade.symbol}
+                          </span>
+                          <span className="text-xs px-2 py-1 rounded font-bold" style={{
+                            background: trade.side === 'long' ? 'rgba(14, 203, 129, 0.2)' : 'rgba(246, 70, 93, 0.2)',
+                            color: trade.side === 'long' ? '#10B981' : '#F87171'
                           }}>
-                            Latest
+                            {trade.side.toUpperCase()}
+                          </span>
+                          {isRecent && (
+                            <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{
+                              background: 'rgba(240, 185, 11, 0.2)',
+                              color: '#FCD34D'
+                            }}>
+                              Latest
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-lg font-bold mono" style={{
+                          color: isProfitable ? '#10B981' : '#F87171'
+                        }}>
+                          {isProfitable ? '+' : ''}{trade.pn_l_pct.toFixed(2)}%
+                        </div>
+                      </div>
+
+                      {/* 价格信息 */}
+                      <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
+                        <div>
+                          <div style={{ color: '#94A3B8' }}>Entry</div>
+                          <div className="font-mono font-semibold" style={{ color: '#CBD5E1' }}>
+                            {trade.open_price.toFixed(4)}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div style={{ color: '#94A3B8' }}>Exit</div>
+                          <div className="font-mono font-semibold" style={{ color: '#CBD5E1' }}>
+                            {trade.close_price.toFixed(4)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 盈亏详情 */}
+                      <div className="rounded-lg p-2 mb-2" style={{
+                        background: isProfitable ? 'rgba(16, 185, 129, 0.1)' : 'rgba(248, 113, 113, 0.1)'
+                      }}>
+                        <div className="flex items-center justify-between text-xs">
+                          <span style={{ color: '#94A3B8' }}>P&L</span>
+                          <span className="font-bold mono" style={{
+                            color: isProfitable ? '#10B981' : '#F87171'
+                          }}>
+                            {isProfitable ? '+' : ''}{trade.pn_l.toFixed(2)} USDT
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 时间和持仓时长 */}
+                      <div className="flex items-center justify-between text-xs" style={{ color: '#94A3B8' }}>
+                        <span>⏱️ {formatDuration(trade.duration)}</span>
+                        {trade.was_stop_loss && (
+                          <span className="px-2 py-0.5 rounded font-semibold" style={{
+                            background: 'rgba(248, 113, 113, 0.2)',
+                            color: '#FCA5A5'
+                          }}>
+                            Stop Loss
                           </span>
                         )}
                       </div>
-                      <div className="text-xs px-2 py-1 rounded font-semibold" style={{
-                        background: decision.success ? 'rgba(16, 185, 129, 0.2)' : 'rgba(248, 113, 113, 0.2)',
-                        color: decision.success ? '#6EE7B7' : '#FCA5A5'
+
+                      {/* 交易时间 */}
+                      <div className="text-xs mt-2 pt-2 border-t" style={{
+                        color: '#64748B',
+                        borderColor: 'rgba(71, 85, 105, 0.3)'
                       }}>
-                        {decision.success ? '✓' : '✗'}
+                        {new Date(trade.close_time).toLocaleString('en-US', {
+                          month: 'short',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
                       </div>
                     </div>
-
-                    {/* 时间 */}
-                    <div className="text-xs mb-3 font-mono" style={{ color: '#94A3B8' }}>
-                      {new Date(decision.timestamp).toLocaleString('en-US', {
-                        month: 'short',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </div>
-
-                    {/* 思维链 */}
-                    {decision.cot_trace && (
-                      <details className="group">
-                        <summary className="cursor-pointer text-xs font-semibold flex items-center gap-1 hover:opacity-70 transition-opacity" style={{
-                          color: idx === 0 ? '#A78BFA' : '#818CF8'
-                        }}>
-                          <span>View CoT</span>
-                          <span className="text-[10px]">▶</span>
-                        </summary>
-                        <div className="mt-2 rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto scrollbar-thin" style={{
-                          background: 'rgba(0, 0, 0, 0.4)',
-                          border: '1px solid rgba(139, 92, 246, 0.2)',
-                          color: '#C4B5FD',
-                          fontFamily: 'ui-monospace, monospace'
-                        }}>
-                          {decision.cot_trace.length > 400
-                            ? decision.cot_trace.substring(0, 400) + '...'
-                            : decision.cot_trace}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="rounded-xl p-6 text-center backdrop-blur-sm" style={{
-              background: 'rgba(30, 35, 41, 0.4)',
-              border: '1px solid rgba(71, 85, 105, 0.3)'
-            }}>
-              <div style={{ color: '#94A3B8' }}>No decisions yet</div>
+                  );
+                })
+              ) : (
+                <div className="p-6 text-center">
+                  <div className="text-4xl mb-2 opacity-50">📜</div>
+                  <div style={{ color: '#94A3B8' }}>No completed trades yet</div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
         {/* 右侧列结束 */}
 
