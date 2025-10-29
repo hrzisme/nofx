@@ -16,9 +16,13 @@ type MarketData struct {
 	CurrentPrice      float64
 	PriceChange1h     float64 // 1小时价格变化百分比
 	PriceChange4h     float64 // 4小时价格变化百分比
-	CurrentEMA20      float64
-	CurrentMACD       float64
-	CurrentRSI7       float64
+	CurrentEMA20      float64 // 3分钟EMA20（实时）
+	CurrentMACD       float64 // 3分钟MACD（实时）
+	CurrentRSI7       float64 // 3分钟RSI14（实时，字段名保持RSI7以兼容）
+	// 15分钟级别指标（短期趋势）
+	CurrentEMA20_15m  float64 // 15分钟EMA20（短期趋势）
+	CurrentMACD_15m   float64 // 15分钟MACD（短期趋势）
+	CurrentRSI14_15m  float64 // 15分钟RSI14（短期趋势）
 	OpenInterest      *OIData
 	FundingRate       float64
 	IntradaySeries    *IntradayData
@@ -68,23 +72,35 @@ func GetMarketData(symbol string) (*MarketData, error) {
 	// 标准化symbol
 	symbol = NormalizeSymbol(symbol)
 
-	// 获取3分钟K线数据 (最近10个)
-	klines3m, err := getKlines(symbol, "3m", 40) // 多获取一些用于计算
+	// 多时间框架分析（三个维度）
+	// 1. 3分钟K线：实时入场时机（配合决策周期）
+	klines3m, err := getKlines(symbol, "3m", 40) // 40根 = 2小时数据，用于即时分析
 	if err != nil {
 		return nil, fmt.Errorf("获取3分钟K线失败: %v", err)
 	}
 
-	// 获取4小时K线数据 (最近10个)
-	klines4h, err := getKlines(symbol, "4h", 60) // 多获取用于计算指标
+	// 2. 15分钟K线：短期趋势判断
+	klines15m, err := getKlines(symbol, "15m", 40) // 40根 = 10小时数据，过滤噪音
+	if err != nil {
+		return nil, fmt.Errorf("获取15分钟K线失败: %v", err)
+	}
+
+	// 3. 4小时K线：大趋势方向
+	klines4h, err := getKlines(symbol, "4h", 60) // 60根 = 10天数据，战略方向
 	if err != nil {
 		return nil, fmt.Errorf("获取4小时K线失败: %v", err)
 	}
 
-	// 计算当前指标 (基于3分钟最新数据)
+	// 计算当前指标 (基于3分钟最新数据，保持实时性)
 	currentPrice := klines3m[len(klines3m)-1].Close
-	currentEMA20 := calculateEMA(klines3m, 20)
-	currentMACD := calculateMACD(klines3m)
-	currentRSI7 := calculateRSI(klines3m, 7)
+	currentEMA20_3m := calculateEMA(klines3m, 20)   // 3分钟EMA20 = 1小时均线
+	currentMACD_3m := calculateMACD(klines3m)        // 3分钟MACD（实时）
+	currentRSI14_3m := calculateRSI(klines3m, 14)   // 3分钟RSI14（实时）
+
+	// 计算15分钟级别指标（短期趋势）
+	currentEMA20_15m := calculateEMA(klines15m, 20)  // 15分钟EMA20 = 5小时均线
+	currentMACD_15m := calculateMACD(klines15m)      // 15分钟MACD（短期趋势）
+	currentRSI14_15m := calculateRSI(klines15m, 14)  // 15分钟RSI14（短期趋势）
 
 	// 计算价格变化百分比
 	// 1小时价格变化 = 20个3分钟K线前的价格
@@ -115,10 +131,10 @@ func GetMarketData(symbol string) (*MarketData, error) {
 	// 获取Funding Rate
 	fundingRate, _ := getFundingRate(symbol)
 
-	// 计算日内系列数据
+	// 计算日内系列数据 (保留3分钟，配合决策周期)
 	intradayData := calculateIntradaySeries(klines3m)
 
-	// 计算长期数据
+	// 计算长期数据 (4小时级别，用于趋势判断)
 	longerTermData := calculateLongerTermData(klines4h)
 
 	return &MarketData{
@@ -126,9 +142,12 @@ func GetMarketData(symbol string) (*MarketData, error) {
 		CurrentPrice:      currentPrice,
 		PriceChange1h:     priceChange1h,
 		PriceChange4h:     priceChange4h,
-		CurrentEMA20:      currentEMA20,
-		CurrentMACD:       currentMACD,
-		CurrentRSI7:       currentRSI7,
+		CurrentEMA20:      currentEMA20_3m,   // 3分钟EMA20（实时）
+		CurrentMACD:       currentMACD_3m,    // 3分钟MACD（实时）
+		CurrentRSI7:       currentRSI14_3m,   // 3分钟RSI14（实时）
+		CurrentEMA20_15m:  currentEMA20_15m,  // 15分钟EMA20（短期趋势）
+		CurrentMACD_15m:   currentMACD_15m,   // 15分钟MACD（短期趋势）
+		CurrentRSI14_15m:  currentRSI14_15m,  // 15分钟RSI14（短期趋势）
 		OpenInterest:      oiData,
 		FundingRate:       fundingRate,
 		IntradaySeries:    intradayData,
@@ -456,8 +475,13 @@ func getFundingRate(symbol string) (float64, error) {
 func FormatMarketData(data *MarketData) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("current_price = %.2f, current_ema20 = %.3f, current_macd = %.3f, current_rsi (7 period) = %.3f\n\n",
+	// 3分钟实时指标（配合决策周期）
+	sb.WriteString(fmt.Sprintf("【3分钟实时】current_price = %.2f, ema20 = %.3f, macd = %.3f, rsi14 = %.3f\n\n",
 		data.CurrentPrice, data.CurrentEMA20, data.CurrentMACD, data.CurrentRSI7))
+
+	// 15分钟短期趋势指标
+	sb.WriteString(fmt.Sprintf("【15分钟趋势】ema20 = %.3f, macd = %.3f, rsi14 = %.3f\n\n",
+		data.CurrentEMA20_15m, data.CurrentMACD_15m, data.CurrentRSI14_15m))
 
 	sb.WriteString(fmt.Sprintf("In addition, here is the latest %s open interest and funding rate for perps:\n\n",
 		data.Symbol))
@@ -485,11 +509,11 @@ func FormatMarketData(data *MarketData) string {
 		}
 
 		if len(data.IntradaySeries.RSI7Values) > 0 {
-			sb.WriteString(fmt.Sprintf("RSI indicators (7‑Period): %s\n\n", formatFloatSlice(data.IntradaySeries.RSI7Values)))
+			sb.WriteString(fmt.Sprintf("RSI indicators (7‑Period - Fast): %s\n\n", formatFloatSlice(data.IntradaySeries.RSI7Values)))
 		}
 
 		if len(data.IntradaySeries.RSI14Values) > 0 {
-			sb.WriteString(fmt.Sprintf("RSI indicators (14‑Period): %s\n\n", formatFloatSlice(data.IntradaySeries.RSI14Values)))
+			sb.WriteString(fmt.Sprintf("RSI indicators (14‑Period - Standard): %s\n\n", formatFloatSlice(data.IntradaySeries.RSI14Values)))
 		}
 	}
 
